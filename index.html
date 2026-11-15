@@ -80,6 +80,10 @@ a{color:var(--blue2)}
 .vt input,.vt select{width:auto;min-height:38px;padding:4px 6px}.vt input[type=number]{width:70px}
 #tl td.t{font-weight:800;white-space:nowrap;width:1%}#tl tr.late td{color:var(--red)}#tl tr.leave td{font-weight:600}
 #tl tr.past td{opacity:.5}
+#pv{position:fixed;inset:0;z-index:2100;background:#000e;color:#fff;overflow:auto;padding:12px}#pv[hidden]{display:none}
+.pvbar{display:flex;justify-content:space-between;align-items:center;gap:12px;position:sticky;top:0;background:#000;padding:6px 0}.pvbar button{color:#fff;border-color:#fff}
+#pvBody figure{margin:12px auto;max-width:900px}#pvBody img{width:100%;height:auto;border-radius:6px}#pvBody figcaption{font-size:14px;opacity:.8}
+.phb{min-width:44px!important;padding:4px 8px!important}.phb[data-n]:not([data-n="0"])::after{content:attr(data-n);margin-left:3px;font-size:12px}
 #banner{position:fixed;top:0;left:0;right:0;z-index:2000;background:var(--yel);color:#111;font-weight:800;padding:14px 16px;display:flex;gap:12px;align-items:center;justify-content:space-between;box-shadow:0 4px 12px #0004}
 #banner[hidden]{display:none}#banner button{border-color:#111;color:#111;min-width:44px}
 .mk.h{border-radius:5px;background:#0b4f9c;color:#fff;border-color:#fff}
@@ -87,6 +91,7 @@ a{color:var(--blue2)}
 </style>
 </head>
 <body>
+<div id="pv" hidden role="dialog" aria-label="Photos"><div class="pvbar"><b id="pvTitle"></b><button id="pvX" aria-label="Close">✕</button></div><div id="pvBody"></div></div>
 <div id="banner" hidden role="alert"><span id="bannerTx"></span><button id="bannerX" aria-label="Dismiss">✕</button></div>
 <header><div style="flex:1"><h1>Shift Mileage Planner</h1><small>Plan visit routes, see mileage, compare with what you're paid</small></div><button id="unitBtn" style="color:#fff;border-color:#fff">Show km</button></header>
 <div class="wrap">
@@ -102,6 +107,8 @@ a{color:var(--blue2)}
   <h2 style="margin-top:14px;font-size:16px">Vehicle checks before you drive</h2>
   <div id="checks"></div>
   <div class="row" style="margin-top:6px"><button id="chkAll">Mark all good</button><button id="chkReset">Reset checks</button></div>
+  <div class="row" style="margin-top:6px"><button id="carPhoto">📷 Add photos of the car</button><button id="carPhotoView">View photos (<span id="phCount">0</span>)</button></div>
+  <input type="file" id="chkPhotoIn" accept="image/*" multiple hidden>
   <div id="chkWarn" class="warn" style="margin-top:6px"></div>
   <div class="row" style="margin-top:8px">
    <div><label for="odoS">Odometer at start (optional)</label><input id="odoS" type="number" min="0" step="1" inputmode="numeric"></div>
@@ -154,6 +161,7 @@ a{color:var(--blue2)}
   <label for="stopAddr">Address or postcode</label>
   <div class="row"><div style="flex:3"><input id="stopAddr" placeholder="e.g. 12 Gloucester Rd, Bristol BS7"></div><button id="addStop" class="pri">Add</button></div>
   <label class="chk" style="margin-top:12px"><span style="font-weight:600;color:var(--blue2)">Import visits from a PDF rota</span><input type="file" id="pdfIn" accept="application/pdf" style="width:auto"></label>
+  <label class="chk"><span style="font-weight:600;color:var(--blue2)">Import visits from a photo or screenshot</span><input type="file" id="imgIn" accept="image/*" multiple style="width:auto"></label>
   <div id="pdfBox" hidden style="margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:10px">
    <div class="note" id="pdfNote"></div>
    <label class="chk"><input type="checkbox" id="pdfInit" checked> Shorten names to initials</label>
@@ -222,7 +230,7 @@ a{color:var(--blue2)}
 <script>
 {
 const KEY='shiftMileagePlanner.v1';
-const def={home:null,office:null,stops:[],places:[],log:[],clock:null,vehicle:{model:'',desc:'',reg:''},checks:{},colleagues:[],waits:[],alertsOn:false,fired:{},set:{rate:0,paidMode:'between',hmrc:0.45,tax:0.2,app:'google',start:'home',end:'home',unit:'mi',perMonth:16,buffer:5,pickMin:3,traffic:20,defDur:30,lead:5}};
+const def={home:null,office:null,stops:[],places:[],log:[],clock:null,vehicle:{model:'',desc:'',reg:''},checks:{},colleagues:[],waits:[],alertsOn:false,fired:{},checkPhotos:{},set:{rate:0,paidMode:'between',hmrc:0.45,tax:0.2,app:'google',start:'home',end:'home',unit:'mi',perMonth:16,buffer:5,pickMin:3,traffic:20,defDur:30,lead:5}};
 let S;
 function load(j){const s=Object.assign({},def,j||{});s.set=Object.assign({},def.set,(j&&j.set)||{});s.vehicle=Object.assign({},def.vehicle,(j&&j.vehicle)||{});s.checks=Object.assign({},(j&&j.checks)||{});['colleagues','waits'].forEach(k=>{if(!Array.isArray(s[k]))s[k]=[];});s.fired=s.fired||{};const old=Date.now()-3*864e5;Object.keys(s.fired).forEach(k=>{if(s.fired[k]<old)delete s.fired[k];});if(s.vehicle.type){if(s.vehicle.type!=='car'&&s.vehicle.type!=='van')s.set.hmrc=0.45;delete s.vehicle.type;}
  if(s.base&&!s.home){s.home=s.base;}delete s.base;if('round' in s.set){if(!s.set.round)s.set.end='last';delete s.set.round;}return s;}
@@ -429,7 +437,7 @@ function renderLog(){
   rowsSorted.map(r=>{const m=money(r.miles,r.paidMiles,r.actual);const est=!(r.actual!=null&&r.actual!=='');
    const tm=r.start?new Date(r.start).toTimeString().slice(0,5)+'–'+new Date(r.end).toTimeString().slice(0,5)+' ('+hm_(r.shiftMin)+')':'—';
    const src=r.odo?'odometer':(r.start?'planned route':'');
-   return `<tr><td data-l="Date">${esc(r.date)}</td><td data-l="Shift">${esc(r.name)}</td><td class="n" data-l="Times">${tm}</td><td class="n" data-l="Driving">${hm_(r.driveMin)}</td><td class="n" data-l="Working">${hm_(r.workMin)}</td><td class="n" data-l="Distance">${dmi(r.miles)}${src?' <span class="note">'+src+'</span>':''}</td><td class="n" data-l="Paid distance">${dmi(r.paidMiles)}</td><td class="n" data-l="Paid £">${gbp(paidOf(r))}${est?' <span class="note">est.</span>':''}</td><td class="n" data-l="Gap £">${gbp(m.gap)}</td><td data-l="Vehicle">${r.vehicle?esc(vehText(r.vehicle)||'—'):'—'}${r.checks?`<div class="note${hasIssue(r.checks)?' warn':''}">${esc(checkText(r.checks))}</div>`:''}</td><td data-l=""><button data-del="${r.id}" aria-label="Delete entry">✕</button></td></tr>`;}).join('')+'</tbody>'
+   return `<tr><td data-l="Date">${esc(r.date)}</td><td data-l="Shift">${esc(r.name)}</td><td class="n" data-l="Times">${tm}</td><td class="n" data-l="Driving">${hm_(r.driveMin)}</td><td class="n" data-l="Working">${hm_(r.workMin)}</td><td class="n" data-l="Distance">${dmi(r.miles)}${src?' <span class="note">'+src+'</span>':''}</td><td class="n" data-l="Paid distance">${dmi(r.paidMiles)}</td><td class="n" data-l="Paid £">${gbp(paidOf(r))}${est?' <span class="note">est.</span>':''}</td><td class="n" data-l="Gap £">${gbp(m.gap)}</td><td data-l="Vehicle">${r.vehicle?esc(vehText(r.vehicle)||'—'):'—'}${r.checks?`<div class="note${hasIssue(r.checks)?' warn':''}">${esc(checkText(r.checks))}</div>`:''}${r.photos&&r.photos.length?`<button data-ph-log="${r.id}" style="margin-top:4px;min-height:36px;padding:4px 10px">📷 ${r.photos.length} photo${r.photos.length>1?'s':''}</button>`:''}</td><td data-l=""><button data-del="${r.id}" aria-label="Delete entry">✕</button></td></tr>`;}).join('')+'</tbody>'
   :'<tbody><tr><td class="note">No shifts logged yet. Use the shift clock, or plan a route and press "Save to logbook".</td></tr></tbody>';
 }
 function renderAll(){renderPlaces();renderStops();renderSchedule();renderMap();renderRoute();renderLog();$('unitBtn').textContent=S.set.unit==='km'?'Show miles':'Show km';renderClock();}
@@ -509,14 +517,19 @@ $('saveShift').onclick=()=>{
  S.log.push({id:uid(),date:$('shDate').value||new Date().toISOString().slice(0,10),name:$('shName').value.trim()||'Shift',miles:+mi(route.distance).toFixed(2),paidMiles:+mi(paidMeters(route.legs)).toFixed(2),actual:a===''?null:+a,stops:S.stops.length,vehicle:{...S.vehicle}});
  save();$('shPaid').value='';renderLog();status('Saved to logbook.');
 };
-$('log').addEventListener('click',e=>{const b=e.target.closest('button[data-del]');if(!b)return;S.log=S.log.filter(r=>r.id!==b.dataset.del);save();renderLog();});
+$('log').addEventListener('click',e=>{
+ const v=e.target.closest('button[data-ph-log]');if(v){const r=S.log.find(r=>r.id===v.dataset.phLog);if(r)showPhotos(r.photos.map(p=>p.id),r.date+' · '+r.name);return;}
+ const b=e.target.closest('button[data-del]');if(!b)return;
+ if(!b.dataset.c){b.dataset.c=1;b.textContent='Delete?';setTimeout(()=>{delete b.dataset.c;b.textContent='✕';},3000);return;}
+ const r=S.log.find(r=>r.id===b.dataset.del);if(r&&r.photos)pDel(r.photos.map(p=>p.id)).catch(()=>{});
+ S.log=S.log.filter(r=>r.id!==b.dataset.del);save();renderLog();});
 function download(name,type,text){const u=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);}
 $('csvBtn').onclick=()=>{const h='Date,Shift,Start,End,Shift mins,Driving mins,Working mins,Miles,Paid miles,Paid £,HMRC value £,Gap £,Vehicle,Registration,Description,Checks\n';
  const rows=S.log.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(r=>{const m=money(r.miles,r.paidMiles,r.actual);const paid=r.actual!=null&&r.actual!==''?+r.actual:m.pay;
   const tt=x=>x?new Date(x).toTimeString().slice(0,5):'',mm=x=>x==null?'':Math.round(x);return [r.date,'"'+String(r.name).replace(/"/g,'""')+'"',tt(r.start),tt(r.end),mm(r.shiftMin),mm(r.driveMin),mm(r.workMin),r.miles.toFixed(1),r.paidMiles.toFixed(1),paid.toFixed(2),m.hm.toFixed(2),m.gap.toFixed(2),'"'+(r.vehicle&&r.vehicle.model||'')+'"',r.vehicle?r.vehicle.reg||'':'','"'+(r.vehicle&&r.vehicle.desc||'')+'"','"'+checkText(r.checks)+'"'].join(',');}).join('\n');
  download('mileage-log.csv','text/csv',h+rows);};
-$('bakBtn').onclick=()=>download('mileage-planner-backup.json','application/json',JSON.stringify(S,null,1));
-$('bakIn').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{S=load(JSON.parse(await f.text()));save();status('Backup restored.');syncSettings();renderChecks();recalc();}catch(x){status('That file isn\'t a valid backup.');}e.target.value='';};
+$('bakBtn').onclick=async()=>{let photos=[];try{photos=await pAll();}catch(e){}download('mileage-planner-backup.json','application/json',JSON.stringify({...S,photoData:photos}));status('Backup saved'+(photos.length?` with ${photos.length} photo${photos.length>1?'s':''}`:'')+'.');};
+$('bakIn').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const j=JSON.parse(await f.text());const ph=j.photoData||[];delete j.photoData;S=load(j);for(const p of ph){try{await pPut(p);}catch(x){}}save();status('Backup restored.');syncSettings();renderChecks();recalc();}catch(x){status('That file isn\'t a valid backup.');}e.target.value='';};
 $('unitBtn').onclick=()=>{S.set.unit=S.set.unit==='km'?'mi':'km';save();renderAll();};
 
 /* ---------- vehicle and checks ---------- */
@@ -553,18 +566,19 @@ const vehText=v=>v?[v.model,v.reg].filter(Boolean).join(' · ')+(v.desc?' ('+v.d
 function renderChecks(){
  Object.keys(S.checks).forEach(k=>{if(!CK[k]||!optOf(CK[k],S.checks[k]))delete S.checks[k];});
  const ch=S.checks;
- $('checks').innerHTML=CHECKS.map(c=>`<div class="ck"><span>${esc(c.n)}<small>${esc(c.d)}</small></span><div class="seg" role="group" aria-label="${esc(c.n)}">${c.o.map(([v,l,k])=>`<button class="${k}" data-c="${c.id}" data-v="${v}" aria-pressed="${ch[c.id]===v}">${esc(l)}</button>`).join('')}</div></div>`).join('');
+ $('checks').innerHTML=CHECKS.map(c=>`<div class="ck"><span>${esc(c.n)}<small>${esc(c.d)}</small></span><div class="seg" role="group" aria-label="${esc(c.n)}"><button class="phb" data-ph="${c.id}" data-n="${((S.checkPhotos||{})[c.id]||[]).length}" aria-label="Add photo of ${esc(c.n)}">📷</button>${c.o.map(([v,l,k])=>`<button class="${k}" data-c="${c.id}" data-v="${v}" aria-pressed="${ch[c.id]===v}">${esc(l)}</button>`).join('')}</div></div>`).join('');
  const stop=CHECKS.filter(c=>ch[c.id]&&optOf(c,ch[c.id])[2]==='d');
  const soon=CHECKS.filter(c=>ch[c.id]&&optOf(c,ch[c.id])[2]==='y');
  $('chkWarn').innerHTML=(stop.length?`Fix before driving: ${stop.map(c=>esc(c.n)).join(', ')}. Don't drive until it's safe, and report it.`:'')+
   (soon.length?`<div style="color:var(--mute)">Needs attention soon: ${soon.map(c=>esc(c.n)).join(', ')}.</div>`:'');
+ $('phCount').textContent=Object.values(S.checkPhotos||{}).flat().length;
  const done=Object.keys(ch).length;$('chkAll').textContent=done?`Mark the rest OK (${done}/${CHECKS.length} done)`:'Mark all OK';
  $('vModel').value=S.vehicle.model||'';$('vDesc').value=S.vehicle.desc||'';$('vReg').value=S.vehicle.reg||'';
 }
 $('checks').addEventListener('click',e=>{const b=e.target.closest('button[data-c]');if(!b)return;const c=b.dataset.c;
  if(S.checks[c]===b.dataset.v)delete S.checks[c];else S.checks[c]=b.dataset.v;save();renderChecks();});
 $('chkAll').onclick=()=>{CHECKS.forEach(c=>{if(!S.checks[c.id])S.checks[c.id]='ok';});save();renderChecks();};
-$('chkReset').onclick=()=>{S.checks={};save();renderChecks();};
+$('chkReset').onclick=()=>{pDel(Object.values(S.checkPhotos||{}).flat()).catch(()=>{});S.checks={};S.checkPhotos={};save();renderChecks();};
 $('vModel').onchange=()=>{S.vehicle.model=$('vModel').value.trim();save();};
 $('vDesc').onchange=()=>{S.vehicle.desc=$('vDesc').value.trim();save();};
 $('vReg').onchange=()=>{const v=$('vReg').value.toUpperCase().replace(/\s+/g,' ').trim();S.vehicle.reg=v;$('vReg').value=v;save();
@@ -584,7 +598,7 @@ function renderClock(){
 }
 $('clkStart').onclick=()=>{
  const now=Date.now(),o=$('odoS').value;
- S.clock={vehicle:{...S.vehicle},checks:snapChecks(S.checks),start:now,segStart:now,mode:$('clkMode').value,drive:0,work:0,odoStart:o===''?null:+o,cur:null,idx:0,
+ S.clock={vehicle:{...S.vehicle},checks:snapChecks(S.checks),photos:allCheckPhotos(),start:now,segStart:now,mode:$('clkMode').value,drive:0,work:0,odoStart:o===''?null:+o,cur:null,idx:0,
   visits:S.stops.map((s,i)=>({id:s.id,label:s.label||'Visit '+(i+1),arr:null,lv:null}))};
  save();renderClock();status('Shift started.');
 };
@@ -606,9 +620,9 @@ $('clkEnd').onclick=()=>{
  const d=new Date(c.start),iso=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
  S.log.push({id:uid(),date:iso,name:$('shName').value.trim()||'Shift',start:new Date(c.start).toISOString(),end:new Date(now).toISOString(),
   shiftMin:(now-c.start)/60000,driveMin:c.drive/60000,workMin:c.work/60000,plannedMiles:+planned.toFixed(2),miles:+miles.toFixed(2),paidMiles:+paidMiles.toFixed(2),odo:odo!=null,actual:null,
-  vehicle:c.vehicle,checks:c.checks,
+  vehicle:c.vehicle,checks:c.checks,photos:c.photos||[],
   visits:c.visits.filter(v=>v.arr).map(v=>({label:v.label,arr:v.arr,lv:v.lv}))});
- S.clock=null;S.checks={};$('odoS').value='';$('odoE').value='';save();renderChecks();renderAll();status('Shift ended and saved to the logbook.');
+ S.clock=null;S.checks={};S.checkPhotos={};$('odoS').value='';$('odoE').value='';save();renderChecks();renderAll();status('Shift ended and saved to the logbook.');
 };
 $('clkCancel').onclick=()=>{const b=$('clkCancel');if(!b.dataset.c){b.dataset.c=1;b.textContent='Tap again to discard';setTimeout(()=>{delete b.dataset.c;b.textContent='Discard';},3000);return;}
  delete b.dataset.c;b.textContent='Discard';S.clock=null;save();renderClock();status('Shift discarded.');};
@@ -674,9 +688,7 @@ $('pdfIn').onchange=async e=>{
   found=parseVisits(lines);
   if(!lines.length){status('No text found. This PDF may be a scanned image, so type the visits in instead.');return;}
   if(!found.length){status('No UK postcodes found in this PDF, so no addresses could be picked out.');return;}
-  if($('pdfInit').checked)found.forEach(v=>v.label=initials(v.label));
-  $('pdfNote').textContent=`Found ${found.length} address${found.length>1?'es':''}. Check and correct them, untick any you don't want, then add.`;
-  $('pdfBox').hidden=false;renderFound();status('');
+  showFound('PDF');
  }catch(x){status('Couldn\'t read that PDF. Check your internet connection (the PDF reader loads online) or try another file.');}
 };
 $('pdfInit').onchange=()=>{if($('pdfInit').checked){found.forEach(v=>v.label=initials(v.label));renderFound();}};
@@ -824,6 +836,77 @@ $('icsBtn').onclick=()=>{
   'SUMMARY:'+icsEsc(e.n),'DESCRIPTION:'+icsEsc('Leave at '+fmtT(e.t)+' to arrive on time.'),'BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+icsEsc('Leave in '+lead+' min: '+e.n),'TRIGGER:-PT'+lead+'M','END:VALARM','END:VEVENT'].join('\r\n')).join('\r\n');
  download('leave-times-'+shiftDay().d+'.ics','text/calendar','BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Shift Mileage Planner//EN\r\nCALSCALE:GREGORIAN\r\n'+body+'\r\nEND:VCALENDAR\r\n');
  status(`Downloaded ${ev.length} leave time${ev.length>1?'s':''}. Open the file to add them to your calendar.`);
+};
+
+/* ---------- photo store (IndexedDB, on this device only) ---------- */
+let idb=null;
+function db(){if(idb)return idb;idb=new Promise((res,rej)=>{try{const r=indexedDB.open('smp-photos',1);r.onupgradeneeded=()=>r.result.createObjectStore('p',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){rej(e);}});return idb;}
+async function pPut(rec){const d=await db();return new Promise((res,rej)=>{const t=d.transaction('p','readwrite');t.objectStore('p').put(rec);t.oncomplete=res;t.onerror=()=>rej(t.error);});}
+async function pGet(id){const d=await db();return new Promise(res=>{const r=d.transaction('p').objectStore('p').get(id);r.onsuccess=()=>res(r.result||null);r.onerror=()=>res(null);});}
+async function pDel(ids){if(!ids||!ids.length)return;const d=await db();return new Promise(res=>{const t=d.transaction('p','readwrite');ids.forEach(id=>t.objectStore('p').delete(id));t.oncomplete=res;t.onerror=res;});}
+async function pAll(){const d=await db();return new Promise(res=>{const r=d.transaction('p').objectStore('p').getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>res([]);});}
+function fileToImg(f){return new Promise((res,rej)=>{const u=URL.createObjectURL(f),im=new Image();im.onload=()=>{res(im);setTimeout(()=>URL.revokeObjectURL(u),1000);};im.onerror=()=>rej(new Error('not an image'));im.src=u;});}
+/* shrink to max 1280px, stamp date/time, reg and check name in the corner */
+async function makePhoto(f,caption){
+ const im=await fileToImg(f),k=Math.min(1,1280/Math.max(im.width,im.height)),w=Math.round(im.width*k),h=Math.round(im.height*k);
+ const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.drawImage(im,0,0,w,h);
+ const now=new Date(),tx=[now.toLocaleDateString('en-GB')+' '+now.toTimeString().slice(0,5),S.vehicle.reg,caption].filter(Boolean).join(' · ');
+ const fs=Math.max(14,Math.round(w/45));x.font=`700 ${fs}px sans-serif`;const tw=x.measureText(tx).width;
+ x.fillStyle='rgba(0,0,0,.6)';x.fillRect(0,h-fs*1.8,Math.min(w,tw+fs),fs*1.8);x.fillStyle='#fff';x.fillText(tx,fs/2,h-fs*0.55);
+ return {id:uid(),url:c.toDataURL('image/jpeg',0.72),ts:now.getTime(),cap:caption||''};
+}
+/* viewer */
+async function showPhotos(ids,title){
+ const recs=(await Promise.all(ids.map(pGet))).filter(Boolean);
+ $('pvTitle').textContent=title+(recs.length?'':' (photos not on this device)');
+ $('pvBody').innerHTML=recs.map(r=>`<figure><img src="${r.url}" alt="${esc(r.cap||'Vehicle photo')}"><figcaption>${esc(r.cap||'Car')} · ${new Date(r.ts).toLocaleString('en-GB')}</figcaption></figure>`).join('');
+ $('pv').hidden=false;
+}
+$('pvX').onclick=()=>{$('pv').hidden=true;$('pvBody').innerHTML='';};
+
+/* photos on the current pre-shift checks: S.checkPhotos = {checkId or 'car': [photo ids]} */
+let photoTarget=null;
+async function addCheckPhotos(files,target){
+ const cap=target==='car'?'Car':(CK[target]?CK[target].n:'');S.checkPhotos=S.checkPhotos||{};
+ let n=0;for(const f of files){try{const p=await makePhoto(f,cap);await pPut(p);(S.checkPhotos[target]=S.checkPhotos[target]||[]).push(p.id);n++;}catch(e){}}
+ save();renderChecks();status(n?`${n} photo${n>1?'s':''} added${cap?' to '+cap:''}.`:'Couldn\'t read that image.');
+}
+$('chkPhotoIn').onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(fs.length&&photoTarget)await addCheckPhotos(fs,photoTarget);};
+$('checks').addEventListener('click',e=>{const b=e.target.closest('button[data-ph]');if(!b)return;photoTarget=b.dataset.ph;$('chkPhotoIn').click();});
+$('carPhoto').onclick=()=>{photoTarget='car';$('chkPhotoIn').click();};
+$('carPhotoView').onclick=()=>showPhotos(Object.values(S.checkPhotos||{}).flat(),'Photos for this shift');
+const allCheckPhotos=()=>Object.entries(S.checkPhotos||{}).flatMap(([k,ids])=>ids.map(id=>({id,check:k})));
+
+/* ---------- visits from a photo (OCR in the browser) ---------- */
+let tess=null;
+function loadTess(){if(window.Tesseract)return Promise.resolve(window.Tesseract);return new Promise((res,rej)=>{const s=document.createElement('script');
+ s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';s.onload=()=>res(window.Tesseract);s.onerror=()=>rej(new Error('ocr load'));document.head.appendChild(s);});}
+/* fix common OCR slips inside UK postcodes, e.g. BS7 8AA read as B57 BAA or BS7 8A4 */
+function fixPC(s){
+ return s.replace(/\b([A-Z]{1,2})([0-9OSIl])([0-9A-Z]?)\s?([0-9OSIlBZG])([A-Z0-9]{2})\b/g,(m,a,b,c,d,ef)=>{
+  const D=x=>({O:'0',S:'5',I:'1',l:'1',B:'8',Z:'2',G:'6'}[x]||x),Lt=x=>({'0':'O','1':'I','5':'S','8':'B','4':'A','2':'Z'}[x]||x);
+  const out=a+D(b)+c+' '+D(d)+Lt(ef[0])+Lt(ef[1]);return /^[A-Z]{1,2}\d[0-9A-Z]? \d[A-Z]{2}$/.test(out)?out:m;});
+}
+async function ocrLines(file){
+ const T=await loadTess();const im=await fileToImg(file);
+ const k=Math.min(1,2200/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
+ const x=c.getContext('2d');x.filter='grayscale(1) contrast(1.4)';x.drawImage(im,0,0,c.width,c.height);
+ const w=await T.createWorker('eng',1,{logger:m=>{if(m.status==='recognizing text')status('Reading photo… '+Math.round(m.progress*100)+'%');}});
+ try{const r=await w.recognize(c);return r.data.text.split('\n').map(l=>fixPC(l.replace(/\s+/g,' ').trim())).filter(Boolean);}finally{await w.terminate();}
+}
+function showFound(src){
+ if(!found.length)return false;
+ if($('pdfInit').checked)found.forEach(v=>v.label=initials(v.label));
+ $('pdfNote').textContent=`Found ${found.length} address${found.length>1?'es':''} in the ${src}. Check and correct them (photos can misread letters), untick any you don't want, then add.`;
+ $('pdfBox').hidden=false;renderFound();status('');return true;
+}
+$('imgIn').onchange=async e=>{
+ const fs=[...e.target.files];e.target.value='';if(!fs.length)return;
+ status('Loading the text reader (first time takes a little longer)…');
+ try{let lines=[];for(const f of fs)lines=lines.concat(await ocrLines(f));
+  found=parseVisits(lines);
+  if(!showFound(fs.length>1?'photos':'photo'))status(lines.length?'Couldn\'t find any UK postcodes in that photo. Try a sharper, straight-on photo, or type the visits in.':'No text found in that photo.');
+ }catch(x){status('Couldn\'t read that photo. Check your internet connection (the text reader loads online) and try again.');}
 };
 
 /* ---------- settings ---------- */
