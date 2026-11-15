@@ -72,11 +72,22 @@ a{color:var(--blue2)}
 .seg button[aria-pressed=true].y{background:var(--yel);border-color:var(--yel);color:#111}
 @media(max-width:600px){.ck{grid-template-columns:minmax(0,1fr)}.seg{justify-content:flex-start}.seg button{flex:1 1 40%}}
 .mk{width:28px;height:28px;border-radius:50%;background:var(--yel);color:#111;border:2px solid #111;font:800 14px Overpass,sans-serif;display:grid;place-items:center}
+.mk.c{background:#7b3fa0;color:#fff;border-color:#fff}.mk.w{background:#4a5560;color:#fff;border-color:#fff}
+.plist{list-style:none;margin:8px 0 0;padding:0}
+.plist li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.plist li input[type=checkbox]{width:22px;min-height:22px}
+.vt{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.vt label{margin:0;font-size:13px;display:flex;align-items:center;gap:4px}
+.vt input,.vt select{width:auto;min-height:38px;padding:4px 6px}.vt input[type=number]{width:70px}
+#tl td.t{font-weight:800;white-space:nowrap;width:1%}#tl tr.late td{color:var(--red)}#tl tr.leave td{font-weight:600}
+#tl tr.past td{opacity:.5}
+#banner{position:fixed;top:0;left:0;right:0;z-index:2000;background:var(--yel);color:#111;font-weight:800;padding:14px 16px;display:flex;gap:12px;align-items:center;justify-content:space-between;box-shadow:0 4px 12px #0004}
+#banner[hidden]{display:none}#banner button{border-color:#111;color:#111;min-width:44px}
 .mk.h{border-radius:5px;background:#0b4f9c;color:#fff;border-color:#fff}
 @media(max-width:600px){table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:8px;border-bottom:1px solid var(--line)}.stack td{display:flex;justify-content:space-between;gap:12px;border:0;padding:3px 0}.stack td::before{content:attr(data-l);color:var(--mute)}}
 </style>
 </head>
 <body>
+<div id="banner" hidden role="alert"><span id="bannerTx"></span><button id="bannerX" aria-label="Dismiss">✕</button></div>
 <header><div style="flex:1"><h1>Shift Mileage Planner</h1><small>Plan visit routes, see mileage, compare with what you're paid</small></div><button id="unitBtn" style="color:#fff;border-color:#fff">Show km</button></header>
 <div class="wrap">
 <section class="card" id="clock" style="margin-bottom:16px">
@@ -121,6 +132,21 @@ a{color:var(--blue2)}
    <div><label for="start">Start at</label><select id="start"><option value="home">Home</option><option value="office">Office</option></select></div>
    <div><label for="end">Finish at</label><select id="end"><option value="home">Home</option><option value="office">Office</option><option value="last">Last visit</option></select></div>
   </div>
+  <h2 style="margin-top:16px">Colleagues to pick up</h2>
+  <div class="row">
+   <div><label for="colLabel">Initials</label><input id="colLabel" placeholder="e.g. KA"></div>
+   <div style="flex:3"><label for="colAddr">Address or postcode</label><input id="colAddr" placeholder="Colleague's address"></div>
+   <button id="colAdd" class="pri">Add</button>
+  </div>
+  <ul class="plist" id="cols"></ul>
+  <p class="note">Tick who you're picking up on this shift. Pick-ups happen in this order, before the first visit.</p>
+  <h2 style="margin-top:16px">Waiting places</h2>
+  <div class="row">
+   <div><label for="wLabel">Name</label><input id="wLabel" placeholder="e.g. Horfield library"></div>
+   <div style="flex:3"><label for="wAddr">Address or postcode</label><input id="wAddr" placeholder="Where you wait between visits"></div>
+   <button id="wAdd" class="pri">Add</button>
+  </div>
+  <ul class="plist" id="waits"></ul>
   <h2 style="margin-top:16px">Visits</h2>
   <label for="stopLabel">Label (use initials or a code, not the person's full name)</label>
   <input id="stopLabel" placeholder="e.g. JB, Visit 1" list="places">
@@ -142,6 +168,13 @@ a{color:var(--blue2)}
  </section>
  <section>
   <div id="map"></div>
+  <div class="card" style="margin-top:16px">
+   <h2>Timeline and alerts</h2>
+   <div id="tlNote" class="note"></div>
+   <div class="scroll"><table id="tl"></table></div>
+   <div class="row" style="margin-top:10px"><button id="alertBtn" class="pri">Turn on alerts</button><button id="wakeBtn">Keep screen on</button><button id="icsBtn">Add leave times to my calendar</button></div>
+   <p class="note" id="alertNote"></p>
+  </div>
   <div class="card" style="margin-top:16px">
    <h2>This route</h2>
    <div class="big" id="sum"></div>
@@ -173,6 +206,11 @@ a{color:var(--blue2)}
   <div><label for="paidMode">Which miles are paid</label><select id="paidMode"><option value="between">Only between visits</option><option value="all">All miles incl. to/from home</option><option value="noReturn">All except the final drive (to home/office)</option></select></div>
   <div><label for="hmrc">HMRC rate, £/mile (cars: 0.45 for the first 10,000 business miles a tax year, then 0.25)</label><input id="hmrc" type="number" step="0.01" min="0" inputmode="decimal"></div>
   <div><label for="tax">Your income tax rate</label><select id="tax"><option value="0.2">20% basic</option><option value="0.4">40% higher</option><option value="0">Not a taxpayer</option></select></div>
+  <div><label for="buffer">Arrive early by (min)</label><input id="buffer" type="number" min="0" step="1" inputmode="numeric"></div>
+  <div><label for="pickMin">Time at each pick-up (min)</label><input id="pickMin" type="number" min="0" step="1" inputmode="numeric"></div>
+  <div><label for="traffic">Traffic allowance (% added to drive times)</label><input id="traffic" type="number" min="0" step="5" inputmode="numeric"></div>
+  <div><label for="defDur">Default visit length (min)</label><input id="defDur" type="number" min="1" step="5" inputmode="numeric"></div>
+  <div><label for="lead">Alert before leave time (min)</label><input id="lead" type="number" min="1" step="1" inputmode="numeric"></div>
   <div><label for="app">Map app for navigation</label><select id="app"><option value="google">Google Maps</option><option value="apple">Apple Maps</option><option value="waze">Waze</option></select></div>
  </div>
  <p class="note">Gap = what HMRC's rate would give for these miles minus what you're paid. If your employer pays less than the HMRC rate, you may be able to claim tax relief on the gap (Mileage Allowance Relief), but check your own situation with HMRC first. The tax-relief figure is the gap × your tax rate.<br>
@@ -184,9 +222,9 @@ a{color:var(--blue2)}
 <script>
 {
 const KEY='shiftMileagePlanner.v1';
-const def={home:null,office:null,stops:[],places:[],log:[],clock:null,vehicle:{model:'',desc:'',reg:''},checks:{},set:{rate:0,paidMode:'between',hmrc:0.45,tax:0.2,app:'google',start:'home',end:'home',unit:'mi',perMonth:16}};
+const def={home:null,office:null,stops:[],places:[],log:[],clock:null,vehicle:{model:'',desc:'',reg:''},checks:{},colleagues:[],waits:[],alertsOn:false,fired:{},set:{rate:0,paidMode:'between',hmrc:0.45,tax:0.2,app:'google',start:'home',end:'home',unit:'mi',perMonth:16,buffer:5,pickMin:3,traffic:20,defDur:30,lead:5}};
 let S;
-function load(j){const s=Object.assign({},def,j||{});s.set=Object.assign({},def.set,(j&&j.set)||{});s.vehicle=Object.assign({},def.vehicle,(j&&j.vehicle)||{});s.checks=Object.assign({},(j&&j.checks)||{});if(s.vehicle.type){if(s.vehicle.type!=='car'&&s.vehicle.type!=='van')s.set.hmrc=0.45;delete s.vehicle.type;}
+function load(j){const s=Object.assign({},def,j||{});s.set=Object.assign({},def.set,(j&&j.set)||{});s.vehicle=Object.assign({},def.vehicle,(j&&j.vehicle)||{});s.checks=Object.assign({},(j&&j.checks)||{});['colleagues','waits'].forEach(k=>{if(!Array.isArray(s[k]))s[k]=[];});s.fired=s.fired||{};const old=Date.now()-3*864e5;Object.keys(s.fired).forEach(k=>{if(s.fired[k]<old)delete s.fired[k];});if(s.vehicle.type){if(s.vehicle.type!=='car'&&s.vehicle.type!=='van')s.set.hmrc=0.45;delete s.vehicle.type;}
  if(s.base&&!s.home){s.home=s.base;}delete s.base;if('round' in s.set){if(!s.set.round)s.set.end='last';delete s.set.round;}return s;}
 try{S=load(JSON.parse(localStorage.getItem(KEY)||'{}'));}catch(e){S=load({});}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}};
@@ -265,12 +303,26 @@ const pts=()=>S.stops.filter(s=>s.lat!=null);
 const startPt=()=>S[S.set.start]||null;
 const endFixed=()=>S.set.end!=='last';
 const endPt=()=>endFixed()?(S[S.set.end]||null):null;
-function seq(){const s=[startPt(),...pts()];if(endFixed())s.push(endPt());return s;}
-function legPaid(i,n){
- const mode=S.set.paidMode,first=i===0,final=endFixed()&&i===n-1;
- if(mode==='between'&&(first||final))return false;
- if(mode==='noReturn'&&final)return false;
- return true;
+const picks=()=>S.colleagues.filter(c=>c.pick&&c.lat!=null);
+const vName=s=>s.label||'Visit '+(S.stops.indexOf(s)+1);
+/* every point the car goes to, in order: start, pick-ups, visits (with optional waiting place before), finish */
+function nodes(){
+ const st=startPt();if(!st)return null;
+ const out=[{k:'start',p:st,n:NAMES[S.set.start]}];
+ picks().forEach(c=>out.push({k:'pick',p:c,n:'Pick up '+c.label}));
+ pts().forEach((s,i)=>{
+  if(i>0&&s.waitAt){const w=S.waits.find(w=>w.id===s.waitAt&&w.lat!=null);if(w)out.push({k:'wait',p:w,n:w.label});}
+  out.push({k:'visit',p:s,n:vName(s),s});});
+ if(endFixed()){const e=endPt();if(!e)return null;out.push({k:'end',p:e,n:NAMES[S.set.end]});}
+ return out;
+}
+function seq(){const n=nodes();return n?n.map(x=>x.p):[null];}
+function legPaid(i){
+ const N=nodes()||[];const vi=N.map((x,j)=>x.k==='visit'?j:-1).filter(j=>j>=0);if(!vi.length)return false;
+ const fv=vi[0],lv=vi[vi.length-1],mode=S.set.paidMode;
+ if(mode==='all')return true;
+ if(mode==='between')return i>=fv&&i+1<=lv;
+ return i<lv;
 }
 const paidMeters=legs=>legs.reduce((a,l,i)=>legPaid(i,legs.length)?a+l.distance:a,0);
 function money(totalMi,paidMi,actual){
@@ -297,7 +349,9 @@ function renderStops(){
   <div><div class="lbl">${esc(s.label||'Visit '+(i+1))}</div><div class="addr">${esc(s.addr)}</div>
   ${s.lat==null?'<div class="warn">Address not found. Remove it and try a postcode.</div>':''}
   ${s.how==='postcode centre'?'<div class="warn">Postcode centre only. Drag the pin if it\'s wrong.</div>':''}
-  ${fl?`<div class="from">${fl}</div>`:''}</div>
+  ${fl?`<div class="from">${fl}</div>`:''}
+  <div class="vt"><label>Time <input type="time" data-f="time" data-i="${i}" value="${esc(s.time||'')}"></label><label>Mins <input type="number" min="1" step="5" data-f="dur" data-i="${i}" value="${esc(s.dur||'')}" placeholder="${S.set.defDur}"></label>
+  ${i>0?`<label>Wait before <select data-f="waitAt" data-i="${i}"><option value="">In the car</option>${S.waits.map(w=>`<option value="${w.id}" ${s.waitAt===w.id?'selected':''}>${esc(w.label)}</option>`).join('')}</select></label>`:''}</div></div>
   <div class="acts"><button data-a="up" data-i="${i}" aria-label="Move up" ${i?'':'disabled'}>↑</button><button data-a="dn" data-i="${i}" aria-label="Move down" ${i<S.stops.length-1?'':'disabled'}>↓</button><button data-a="sw" data-i="${i}" aria-label="Swap">⇄</button><button data-a="rm" data-i="${i}" aria-label="Remove">✕</button></div></li>`;}).join('')
   || '<li style="display:block;color:var(--mute)">No visits yet. Add them above.</li>';
  $('places').innerHTML=S.places.map(p=>`<option value="${esc(p.label)}">${esc(p.addr)}</option>`).join('');
@@ -308,6 +362,9 @@ function renderMap(){
  ['home','office'].forEach(k=>{const b=S[k];if(!b)return;
   const m=L.marker([b.lat,b.lng],{icon:icon(k==='home'?'H':'O','h'),draggable:true}).addTo(layer).bindTooltip(NAMES[k]);
   m.on('dragend',e=>{const p=e.target.getLatLng();b.lat=p.lat;b.lng=p.lng;b.how='pin';save();recalc();});ll.push([b.lat,b.lng]);});
+ [['colleagues','c'],['waits','w']].forEach(([k,c])=>S[k].forEach(p=>{if(p.lat==null||(k==='colleagues'&&!p.pick))return;
+  const m=L.marker([p.lat,p.lng],{icon:icon(k==='colleagues'?'C':'W',c),draggable:true}).addTo(layer).bindTooltip(esc((k==='colleagues'?'Pick up ':'Wait: ')+p.label));
+  m.on('dragend',e=>{const q=e.target.getLatLng();p.lat=q.lat;p.lng=q.lng;p.how='pin';save();recalc();});ll.push([p.lat,p.lng]);}));
  S.stops.forEach((s,i)=>{if(s.lat==null)return;
   const m=L.marker([s.lat,s.lng],{icon:icon(i+1),draggable:true}).addTo(layer).bindTooltip(esc(s.label||'Visit '+(i+1)));
   m.on('dragend',e=>{const p=e.target.getLatLng();s.lat=p.lat;s.lng=p.lng;s.how='pin';rememberPlace(s);save();recalc();});ll.push([s.lat,s.lng]);});
@@ -340,10 +397,10 @@ function renderRoute(){
   <div class="stat"><b>${gbp(mn.hm)}</b><span>at HMRC £${S.set.hmrc}/mile</span></div>
   <div class="stat ${mn.gap>0?'gap':'gain'}"><b>${gbp(Math.abs(mn.gap))}</b><span>${mn.gap>0?'under HMRC rate':'over HMRC rate'}</span></div>
   <div class="stat"><b>${Math.floor(hrs)}h ${String(Math.round(hrs%1*60)).padStart(2,'0')}m</b><span>driving time, no traffic</span></div>`;
- const sq=seq(),n=route.legs.length;
+ const N=nodes()||[],sq=N.map(x=>x.p),n=route.legs.length;
  $('legs').innerHTML=`<thead><tr><th>From</th><th>To</th><th class="n">${U()==='km'?'Km':'Miles'}</th><th class="n">Mins</th><th>Paid?</th><th></th></tr></thead><tbody>`+
-  route.legs.map((l,i)=>{const a=sq[i],b=sq[i+1];
-   return `<tr><td data-l="From">${ptName(a,i)}</td><td data-l="To">${ptName(b,i+1)}</td><td class="n" data-l="Distance">${dm(l.distance)}</td><td class="n" data-l="Mins">${Math.round(l.duration/60)}</td><td data-l="Paid?">${legPaid(i,n)?'Yes':'No'}</td><td data-l="Go"><a href="${esc(navLink(b))}" target="_blank" rel="noopener">Navigate</a></td></tr>`;}).join('')+'</tbody>';
+  route.legs.map((l,i)=>{const a=sq[i],b=sq[i+1];if(!a||!b)return '';
+   return `<tr><td data-l="From">${esc(N[i].n.replace(/^Pick up /,''))}</td><td data-l="To">${esc(N[i+1].n)}</td><td class="n" data-l="Distance">${dm(l.distance)}</td><td class="n" data-l="Mins">${Math.round(l.duration/60)}</td><td data-l="Paid?">${legPaid(i,n)?'Yes':'No'}</td><td data-l="Go"><a href="${esc(navLink(b))}" target="_blank" rel="noopener">Navigate</a></td></tr>`;}).join('')+'</tbody>';
  $('nav').innerHTML=fullRouteLinks(sq);
 }
 const hm_=min=>{if(min==null||isNaN(min))return '—';min=Math.round(min);return Math.floor(min/60)+'h '+String(min%60).padStart(2,'0')+'m';};
@@ -375,7 +432,7 @@ function renderLog(){
    return `<tr><td data-l="Date">${esc(r.date)}</td><td data-l="Shift">${esc(r.name)}</td><td class="n" data-l="Times">${tm}</td><td class="n" data-l="Driving">${hm_(r.driveMin)}</td><td class="n" data-l="Working">${hm_(r.workMin)}</td><td class="n" data-l="Distance">${dmi(r.miles)}${src?' <span class="note">'+src+'</span>':''}</td><td class="n" data-l="Paid distance">${dmi(r.paidMiles)}</td><td class="n" data-l="Paid £">${gbp(paidOf(r))}${est?' <span class="note">est.</span>':''}</td><td class="n" data-l="Gap £">${gbp(m.gap)}</td><td data-l="Vehicle">${r.vehicle?esc(vehText(r.vehicle)||'—'):'—'}${r.checks?`<div class="note${hasIssue(r.checks)?' warn':''}">${esc(checkText(r.checks))}</div>`:''}</td><td data-l=""><button data-del="${r.id}" aria-label="Delete entry">✕</button></td></tr>`;}).join('')+'</tbody>'
   :'<tbody><tr><td class="note">No shifts logged yet. Use the shift clock, or plan a route and press "Save to logbook".</td></tr></tbody>';
 }
-function renderAll(){renderStops();renderMap();renderRoute();renderLog();$('unitBtn').textContent=S.set.unit==='km'?'Show miles':'Show km';renderClock();}
+function renderAll(){renderPlaces();renderStops();renderSchedule();renderMap();renderRoute();renderLog();$('unitBtn').textContent=S.set.unit==='km'?'Show miles':'Show km';renderClock();}
 
 /* ---------- recalculation ---------- */
 let rq=0;
@@ -421,17 +478,30 @@ $('stops').addEventListener('click',e=>{
   const j=st.findIndex(s=>s.id===swapSel);swapSel=null;if(j>=0&&j!==i)[st[i],st[j]]=[st[j],st[i]];status('');}
  save();recalc();
 });
+$('stops').addEventListener('change',e=>{const t=e.target,f=t.dataset.f;if(!f)return;const s=S.stops[+t.dataset.i];if(!s)return;
+ const v=t.value;if(f==='dur')s.dur=v===''?null:+v;else s[f]=v||null;save();if(f==='waitAt')recalc();else renderSchedule();});
 $('revBtn').onclick=()=>{S.stops.reverse();save();recalc();};
 $('clrBtn').onclick=()=>{if(!S.stops.length)return;const b=$('clrBtn');if(b.dataset.c){S.stops=[];delete b.dataset.c;b.textContent='Clear all';save();recalc();}
  else{b.dataset.c=1;b.textContent='Tap again to clear';setTimeout(()=>{delete b.dataset.c;b.textContent='Clear all';},3000);}};
 $('optBtn').onclick=async()=>{
  const p=pts(),s0=startPt(),e0=endPt();
- if(!s0||(endFixed()&&!e0)||p.length<2){status('Set your start/finish and add at least two found visits first.');return;}
- status('Finding the shortest order…');
- try{const nodes=[s0,...p];if(endFixed())nodes.push(e0);
-  const t=await osrmTable(nodes,null);const ord=bestOrder(t.distances,p.length,endFixed()?p.length+1:null);
-  const bad=S.stops.filter(s=>s.lat==null);S.stops=ord.map(k=>p[k-1]).concat(bad);save();await recalc();status('Order optimised for shortest distance.');}
- catch(e){status('Couldn\'t reach the route server.');}
+ if(!s0||(endFixed()&&!e0)||!p.length){status('Set your start/finish and add at least one found visit first.');return;}
+ status('Finding the best order…');
+ try{
+  const bad=S.stops.filter(s=>s.lat==null);let msg;
+  if(p.some(s=>s.time)){
+   const timed=p.filter(s=>s.time).sort((a,b)=>a.time.localeCompare(b.time)),un=p.filter(s=>!s.time);
+   S.stops=timed.concat(un,bad);msg='Visits put in appointment-time order'+(un.length?` (${un.length} without a time moved to the end)`:'')+'.';
+  }else if(p.length>=2){
+   const ns=[s0,...p];if(endFixed())ns.push(e0);
+   const t=await osrmTable(ns,null);const ord=bestOrder(t.distances,p.length,endFixed()?p.length+1:null);
+   S.stops=ord.map(k=>p[k-1]).concat(bad);msg='Visits put in the shortest order.';
+  }
+  const pk=picks();
+  if(pk.length>=2){const first=pts()[0];const t=await osrmTable([s0,...pk,first],null);const ord=bestOrder(t.distances,pk.length,pk.length+1);
+   S.colleagues=ord.map(k=>pk[k-1]).concat(S.colleagues.filter(c=>!pk.includes(c)));msg=(msg?msg+' ':'')+'Pick-ups put in the shortest order.';}
+  save();await recalc();status(msg||'Nothing to reorder.');
+ }catch(e){status('Couldn\'t reach the route server.');}
 };
 $('saveShift').onclick=()=>{
  if(!route){status('Plan a route first.');return;}
@@ -617,17 +687,151 @@ $('pdfAdd').onclick=async()=>{
  let k=0;
  for(const v of pick){k++;status(`Finding address ${k} of ${pick.length}…`);
   const known=S.places.find(p=>p.addr===v.addr&&p.lat!=null);const g=known||await geocode(v.addr);
-  const s={id:uid(),label:v.label,addr:v.addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null};S.stops.push(s);rememberPlace(s);save();renderStops();}
+  const tm=(v.time||'').split('–').map(normT),s={id:uid(),label:v.label,addr:v.addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null,time:tm[0]||null,dur:tm[0]&&tm[1]?((toMin(tm[1])-toMin(tm[0])+1440)%1440)||null:null};S.stops.push(s);rememberPlace(s);save();renderStops();}
  found=[];const bad=S.stops.filter(s=>s.lat==null).length;
  await recalc();status(bad?`Added. ${bad} address${bad>1?'es':''} not found. Fix or remove them.`:'Visits added from PDF.');
 };
 
+/* ---------- colleagues and waiting places ---------- */
+function renderPlaces(){
+ $('cols').innerHTML=S.colleagues.map((c,i)=>`<li><input type="checkbox" data-k="colleagues" data-i="${i}" data-a="pick" ${c.pick?'checked':''} aria-label="Pick up ${esc(c.label)} this shift">
+  <div><div class="lbl">${esc(c.label)}</div><div class="addr">${esc(c.addr)}</div>${c.lat==null?'<div class="warn">Address not found. Remove it and try a postcode.</div>':''}</div>
+  <div class="acts"><button data-k="colleagues" data-i="${i}" data-a="up" aria-label="Move up" ${i?'':'disabled'}>↑</button><button data-k="colleagues" data-i="${i}" data-a="dn" aria-label="Move down" ${i<S.colleagues.length-1?'':'disabled'}>↓</button><button data-k="colleagues" data-i="${i}" data-a="rm" aria-label="Remove">✕</button></div></li>`).join('')
+  ||'<li style="display:block;color:var(--mute)">No colleagues saved.</li>';
+ $('waits').innerHTML=S.waits.map((w,i)=>`<li><span class="mk w" style="width:24px;height:24px;font-size:12px">W</span>
+  <div><div class="lbl">${esc(w.label)}</div><div class="addr">${esc(w.addr)}</div>${w.lat==null?'<div class="warn">Address not found.</div>':''}</div>
+  <div class="acts"><button data-k="waits" data-i="${i}" data-a="rm" aria-label="Remove">✕</button></div></li>`).join('')
+  ||'<li style="display:block;color:var(--mute)">None saved. Choose one per visit under "Wait before".</li>';
+}
+async function addPlace(kind,lab,adr,btn){
+ const label=$(lab).value.trim(),addr=$(adr).value.trim();if(!addr||!label){status('Enter a name and an address.');return;}
+ status('Finding address…');$(btn).disabled=true;const g=await geocode(addr);$(btn).disabled=false;
+ const rec={id:uid(),label,addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null};if(kind==='colleagues')rec.pick=true;
+ S[kind].push(rec);save();$(lab).value='';$(adr).value='';status(g?'':'Address not found.');await recalc();
+}
+$('colAdd').onclick=()=>addPlace('colleagues','colLabel','colAddr','colAdd');
+$('wAdd').onclick=()=>addPlace('waits','wLabel','wAddr','wAdd');
+['cols','waits'].forEach(id=>$(id).addEventListener('click',e=>{
+ const b=e.target.closest('[data-a]');if(!b)return;const arr=S[b.dataset.k],i=+b.dataset.i,a=b.dataset.a;
+ if(a==='pick'){arr[i].pick=b.checked;}
+ else if(a==='up'&&i>0)[arr[i-1],arr[i]]=[arr[i],arr[i-1]];
+ else if(a==='dn'&&i<arr.length-1)[arr[i+1],arr[i]]=[arr[i],arr[i+1]];
+ else if(a==='rm'){const gone=arr.splice(i,1)[0];if(b.dataset.k==='waits')S.stops.forEach(s=>{if(s.waitAt===gone.id)s.waitAt=null;});}
+ else return;
+ save();recalc();
+}));
+
+/* ---------- timeline: when to leave ---------- */
+const toMin=t=>{if(!t)return null;const m=String(t).match(/^(\d{1,2}):(\d{2})/);return m?+m[1]*60+ +m[2]:null;};
+const normT=t=>{const m=String(t||'').match(/(\d{1,2})[:.](\d{2})/);return m?m[1].padStart(2,'0')+':'+m[2]:null;};
+const fmtT=m=>{if(m==null)return '—';m=Math.round(m);const d=Math.floor(m/1440);const r=((m%1440)+1440)%1440;
+ return String(Math.floor(r/60)).padStart(2,'0')+':'+String(r%60).padStart(2,'0')+(d>0?' (+1 day)':d<0?' (day before)':'');};
+function schedule(){
+ const N=nodes();if(!route||!N||route.legs.length!==N.length-1)return null;
+ const tf=1+(+S.set.traffic||0)/100,buf=+S.set.buffer||0,pk=+S.set.pickMin||0,L=i=>route.legs[i].duration/60*tf;
+ const fv=N.findIndex(x=>x.k==='visit');if(fv<0)return null;
+ const T1=toMin(N[fv].s.time);
+ if(T1==null)return {ev:[],note:'Add an appointment time to your first visit to work out when to leave.'};
+ const ev=[];let pre=0;for(let i=0;i<fv;i++){pre+=L(i);if(N[i+1].k==='pick')pre+=pk;}
+ let t=T1-buf-pre;
+ ev.push({t,k:'leave',n:'Leave '+N[0].n.toLowerCase()+(fv>1?' to pick up '+N.slice(1,fv).map(x=>x.p.label).join(', '):' for '+N[fv].n),alert:true});
+ for(let i=0;i<fv;i++){t+=L(i);if(N[i+1].k==='pick'){ev.push({t,k:'pick',n:N[i+1].n});t+=pk;}}
+ let cur=fv,arr=t;
+ for(;;){
+  const nd=N[cur],T=toMin(nd.s.time),start=T!=null?Math.max(arr,T):arr,dur=+nd.s.dur||+S.set.defDur||30;
+  const late=T!=null&&arr>T+0.5?arr-T:0;
+  ev.push({t:arr,k:'arrive',n:'Arrive at '+nd.n+(T!=null?' (appointment '+fmtT(T)+')':''),late});
+  const end=start+dur;ev.push({t:end,k:'finish',n:'Finish '+nd.n+' after '+dur+' min'});
+  const nx=N.findIndex((x,k)=>k>cur&&x.k==='visit');
+  if(nx<0){if(cur<N.length-1){let tt=end;for(let i=cur;i<N.length-1;i++)tt+=L(i);ev.push({t:tt,k:'end',n:'Arrive '+N[N.length-1].n.toLowerCase()});}break;}
+  const nv=N[nx],Tn=toMin(nv.s.time),hasWait=nx===cur+2&&N[cur+1].k==='wait';
+  if(hasWait){
+   const arrW=end+L(cur);let lv=Tn!=null?Tn-buf-L(cur+1):arrW;if(lv<arrW)lv=arrW;
+   ev.push({t:arrW,k:'wait',n:'Wait at '+N[cur+1].n+(lv-arrW>=1?' for '+Math.round(lv-arrW)+' min':'')});
+   ev.push({t:lv,k:'leave',n:'Leave '+N[cur+1].n+' for '+nv.n,alert:Tn!=null});arr=lv+L(cur+1);
+  }else{
+   let lv=Tn!=null?Tn-buf-L(cur):end;if(lv<end)lv=end;
+   if(lv-end>=1)ev.push({t:end,k:'wait',n:'Wait in the car for '+Math.round(lv-end)+' min'});
+   ev.push({t:lv,k:'leave',n:'Leave for '+nv.n,alert:Tn!=null});arr=lv+L(cur);
+  }
+  cur=nx;
+ }
+ return {ev};
+}
+function shiftDay(){const d=$('shDate').value||new Date().toISOString().slice(0,10);const [y,m,dd]=d.split('-').map(Number);return {d,y,m,dd};}
+function alertEvents(){const sc=schedule();if(!sc)return [];const {d,y,m,dd}=shiftDay();
+ return sc.ev.filter(e=>e.alert).map(e=>({...e,at:new Date(y,m-1,dd,0,Math.round(e.t)),key:d+'|'+Math.round(e.t)+'|'+e.n}));}
+function renderSchedule(){
+ const sc=schedule();
+ if(!sc){$('tl').innerHTML='';$('tlNote').textContent='Plan a route (start point and visits) to see your timeline.';renderAlertNote();return;}
+ const {y,m,dd}=shiftDay(),now=Date.now();
+ $('tlNote').textContent=sc.note||`Times include ${S.set.traffic}% for traffic, ${S.set.buffer} min early arrival${picks().length?' and '+S.set.pickMin+' min at each pick-up':''}.`;
+ $('tl').innerHTML=sc.ev.length?'<tbody>'+sc.ev.map(e=>{const at=new Date(y,m-1,dd,0,Math.round(e.t)).getTime();
+  return `<tr class="${e.k}${e.late?' late':''}${at<now-60000?' past':''}"><td class="t">${fmtT(e.t)}</td><td>${e.alert&&S.alertsOn?'🔔 ':''}${esc(e.n)}${e.late?` <b>· ${Math.round(e.late)} min late</b>`:''}</td></tr>`;}).join('')+'</tbody>':'';
+ renderAlertNote();
+}
+
+/* ---------- alerts ---------- */
+let swReg=null,audio=null,wake=null;
+if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').then(r=>{swReg=r;}).catch(()=>{});}
+function beep(){try{audio=audio||new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();
+ [0,0.35,0.7].forEach(d=>{const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=880;o.connect(g);g.connect(audio.destination);
+  g.gain.setValueAtTime(.35,audio.currentTime+d);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+d+.3);o.start(audio.currentTime+d);o.stop(audio.currentTime+d+.3);});}catch(e){}}
+function banner(t){$('bannerTx').textContent=t;$('banner').hidden=false;}
+$('bannerX').onclick=()=>{$('banner').hidden=true;};
+async function notify(title,body){
+ try{navigator.vibrate&&navigator.vibrate([400,150,400,150,400]);}catch(e){}
+ beep();banner(title+'. '+body);
+ if(!('Notification' in window)||Notification.permission!=='granted')return;
+ try{const r=swReg||(navigator.serviceWorker&&await navigator.serviceWorker.getRegistration());
+  if(r){await r.showNotification(title,{body,tag:title,renotify:true,requireInteraction:true,vibrate:[400,150,400]});return;}}catch(e){}
+ try{new Notification(title,{body});}catch(e){}
+}
+function checkAlerts(){
+ if(!S.alertsOn)return;const now=Date.now(),lead=(+S.set.lead||5)*60000;
+ for(const e of alertEvents()){const at=e.at.getTime();
+  if(now>=at-lead&&now<at+120000&&!S.fired[e.key]){S.fired[e.key]=now;save();
+   notify(`${Math.max(0,Math.round((at-now)/60000))} min to leave: ${e.n}`,`Leave at ${fmtT(e.t)} to arrive on time.`);}}
+ renderSchedule();
+}
+setInterval(checkAlerts,15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkAlerts();if(wake===false)reWake();}});
+function renderAlertNote(){
+ const ev=alertEvents(),now=Date.now(),lead=(+S.set.lead||5)*60000,next=ev.find(e=>e.at.getTime()>now);
+ $('alertBtn').textContent=S.alertsOn?'Turn off alerts':'Turn on alerts';
+ $('alertNote').textContent=S.alertsOn?(next?`Next alert at ${fmtT(next.t-(+S.set.lead||5))}: ${next.n}. Keep this page open (use "Keep screen on"). For alerts when the page is closed, add the leave times to your calendar.`:'Alerts are on. No more leave times today.')
+  :'Alerts are off. Turn them on to be told '+S.set.lead+' min before each leave time.';
+}
+$('alertBtn').onclick=async()=>{
+ if(S.alertsOn){S.alertsOn=false;save();renderSchedule();return;}
+ beep();
+ if('Notification' in window&&Notification.permission==='default'){try{await Notification.requestPermission();}catch(e){}}
+ S.alertsOn=true;save();renderSchedule();
+ status('Alerts on'+('Notification' in window&&Notification.permission==='granted'?'':'. Notifications are blocked, so you\'ll get sound, vibration and a banner only')+'.');
+};
+async function reWake(){try{wake=await navigator.wakeLock.request('screen');wake.addEventListener('release',()=>{if(wake)wake=false;});$('wakeBtn').textContent='Screen stays on ✓';}catch(e){wake=null;status('This browser can\'t keep the screen on. Change your phone\'s screen timeout instead.');}}
+$('wakeBtn').onclick=async()=>{
+ if(wake){const w=wake;wake=null;try{await w.release();}catch(e){}$('wakeBtn').textContent='Keep screen on';return;}
+ if(!('wakeLock' in navigator)){status('This browser can\'t keep the screen on. Change your phone\'s screen timeout instead.');return;}
+ reWake();
+};
+const icsEsc=s=>String(s).replace(/[\;,]/g,m=>'\\'+m).replace(/\n/g,'\\n');
+$('icsBtn').onclick=()=>{
+ const ev=alertEvents();if(!ev.length){status('No leave times yet. Add appointment times to your visits.');return;}
+ const p=n=>String(n).padStart(2,'0'),f=d=>d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'T'+p(d.getHours())+p(d.getMinutes())+'00';
+ const stamp=new Date().toISOString().replace(/[-:]/g,'').slice(0,15)+'Z',lead=+S.set.lead||5;
+ const body=ev.map((e,i)=>['BEGIN:VEVENT','UID:'+e.at.getTime()+'-'+i+'@shift-mileage-planner','DTSTAMP:'+stamp,'DTSTART:'+f(e.at),'DTEND:'+f(new Date(e.at.getTime()+5*60000)),
+  'SUMMARY:'+icsEsc(e.n),'DESCRIPTION:'+icsEsc('Leave at '+fmtT(e.t)+' to arrive on time.'),'BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+icsEsc('Leave in '+lead+' min: '+e.n),'TRIGGER:-PT'+lead+'M','END:VALARM','END:VEVENT'].join('\r\n')).join('\r\n');
+ download('leave-times-'+shiftDay().d+'.ics','text/calendar','BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Shift Mileage Planner//EN\r\nCALSCALE:GREGORIAN\r\n'+body+'\r\nEND:VCALENDAR\r\n');
+ status(`Downloaded ${ev.length} leave time${ev.length>1?'s':''}. Open the file to add them to your calendar.`);
+};
+
 /* ---------- settings ---------- */
-const setIds=['rate','paidMode','hmrc','tax','app','perMonth','start','end'];
+const setIds=['rate','paidMode','hmrc','tax','app','perMonth','start','end','buffer','pickMin','traffic','defDur','lead'];
 function syncSettings(){setIds.forEach(k=>{$(k).value=(k==='rate'&&!S.set.rate)?'':S.set[k];});['home','office'].forEach(k=>{if(S[k])$(k+'Addr').value=S[k].addr;});}
-setIds.forEach(k=>$(k).addEventListener('change',()=>{const v=$(k).value;S.set[k]=['rate','hmrc','tax','perMonth'].includes(k)?(+v||0):v;save();
+setIds.forEach(k=>$(k).addEventListener('change',()=>{const v=$(k).value;S.set[k]=['rate','hmrc','tax','perMonth','buffer','pickMin','traffic','defDur','lead'].includes(k)?(+v||0):v;save();renderSchedule();
  if(k==='start'||k==='end'){status('');recalc();}else{renderRoute();renderLog();}}));
-$('shDate').value=new Date().toISOString().slice(0,10);
+$('shDate').value=new Date().toISOString().slice(0,10);$('shDate').addEventListener('change',renderSchedule);
 syncSettings();renderChecks();renderAll();recalc();
 }
 </script>
