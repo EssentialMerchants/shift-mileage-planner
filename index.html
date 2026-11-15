@@ -73,6 +73,8 @@ a{color:var(--blue2)}
 @media(max-width:600px){.ck{grid-template-columns:minmax(0,1fr)}.seg{justify-content:flex-start}.seg button{flex:1 1 40%}}
 .mk{width:28px;height:28px;border-radius:50%;background:var(--yel);color:#111;border:2px solid #111;font:800 14px Overpass,sans-serif;display:grid;place-items:center}
 .mk.c{background:#7b3fa0;color:#fff;border-color:#fff}.mk.w{background:#4a5560;color:#fff;border-color:#fff}
+.btnl{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 14px;border-radius:7px;border:1px solid var(--blue2);color:var(--blue2);font-weight:600;cursor:pointer;margin:0;font-size:16px}
+.btnl.pri{background:var(--blue);border-color:var(--blue);color:#fff}.btnl[aria-disabled=true]{opacity:.45;pointer-events:none}
 .plist{list-style:none;margin:8px 0 0;padding:0}
 .plist li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
 .plist li input[type=checkbox]{width:22px;min-height:22px}
@@ -160,8 +162,14 @@ a{color:var(--blue2)}
   <datalist id="places"></datalist>
   <label for="stopAddr">Address or postcode</label>
   <div class="row"><div style="flex:3"><input id="stopAddr" placeholder="e.g. 12 Gloucester Rd, Bristol BS7"></div><button id="addStop" class="pri">Add</button></div>
-  <label class="chk" style="margin-top:12px"><span style="font-weight:600;color:var(--blue2)">Import visits from a PDF rota</span><input type="file" id="pdfIn" accept="application/pdf" style="width:auto"></label>
-  <label class="chk"><span style="font-weight:600;color:var(--blue2)">Import visits from a photo or screenshot</span><input type="file" id="imgIn" accept="image/*" multiple style="width:auto"></label>
+  <div style="margin-top:14px;border:1px solid var(--line);border-radius:8px;padding:10px">
+   <b>Read a rota</b> <span class="note">(photo, screenshot or PDF)</span>
+   <div class="row" style="margin-top:8px">
+    <label class="btnl pri" tabindex="0">1. Read names and times<input type="file" id="rotaNames" accept="image/*,application/pdf" multiple hidden></label>
+    <label class="btnl" id="rotaAddrL" tabindex="0" aria-disabled="true">2. Read addresses<input type="file" id="rotaAddr" accept="image/*,application/pdf" multiple hidden disabled></label>
+   </div>
+   <p class="note" id="rotaStep">Step 1: choose the page with the names and visit times.</p>
+  </div>
   <div id="pdfBox" hidden style="margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:10px">
    <div class="note" id="pdfNote"></div>
    <label class="chk"><input type="checkbox" id="pdfInit" checked> Shorten names to initials</label>
@@ -681,19 +689,8 @@ function renderFound(){
   ${f.addr?'':'<div class="warn">No address found for this name in the image. Type it in, or leave it unticked.</div>'}</div></div>`).join('');
 }
 $('pdfRows').addEventListener('input',e=>{const t=e.target,i=t.dataset.i;if(i==null)return;found[i][t.dataset.f]=t.type==='checkbox'?t.checked:t.value;if(t.dataset.f==='addr'&&t.value.trim()&&!found[i].on){found[i].on=true;const c=$('pdfRows').querySelector(`input[type=checkbox][data-i="${i}"]`);if(c)c.checked=true;}});
-$('pdfIn').onchange=async e=>{
- const f=e.target.files[0];e.target.value='';if(!f)return;
- status('Reading PDF…');
- try{
-  const lines=await pdfLines(await f.arrayBuffer());
-  found=readRota(lines);
-  if(!lines.length){status('No text found. This PDF may be a scanned image, so type the visits in instead.');return;}
-  if(!found.length){status('No visits found in this PDF: no times with names, and no UK postcodes.');return;}
-  showFound('PDF');
- }catch(x){status('Couldn\'t read that PDF. Check your internet connection (the PDF reader loads online) or try another file.');}
-};
 $('pdfInit').onchange=()=>{if($('pdfInit').checked){found.forEach(v=>v.label=initials(v.label));renderFound();}};
-$('pdfCancel').onclick=()=>{found=[];$('pdfBox').hidden=true;};
+$('pdfCancel').onclick=()=>{found=[];$('pdfBox').hidden=true;stepUI();};
 $('pdfAdd').onclick=async()=>{
  const pick=found.filter(f=>f.on&&f.addr.trim());if(!pick.length)return;
  $('pdfBox').hidden=true;if($('pdfReplace').checked)S.stops=[];
@@ -701,7 +698,7 @@ $('pdfAdd').onclick=async()=>{
  for(const v of pick){k++;status(`Finding address ${k} of ${pick.length}…`);
   const known=S.places.find(p=>p.addr===v.addr&&p.lat!=null);const g=known||await geocode(v.addr);
   const tm=(v.time||'').split('–').map(normT),s={id:uid(),label:v.label,addr:v.addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null,time:tm[0]||null,dur:v.dur||(tm[0]&&tm[1]?((toMin(tm[1])-toMin(tm[0])+1440)%1440)||null:null)};S.stops.push(s);rememberPlace(s);save();renderStops();}
- found=[];if(S.stops.every(s=>s.time))S.stops.sort((a,b)=>a.time.localeCompare(b.time));const bad=S.stops.filter(s=>s.lat==null).length;
+ found=[];stepUI();if(S.stops.every(s=>s.time))S.stops.sort((a,b)=>a.time.localeCompare(b.time));const bad=S.stops.filter(s=>s.lat==null).length;
  await recalc();status(bad?`Added. ${bad} address${bad>1?'es':''} couldn't be found on the map. Fix or remove them.`:'Visits added and numbered in time order.');
 };
 
@@ -726,7 +723,7 @@ function stripName(ln,name){
   if(!/[a-z0-9]/i.test(parts[k])||(w&&(/^(mr|mrs|ms|miss|dr|mx)$/.test(w)||nt.some(t=>t===w||(t.length>=4&&w.length>=4&&lev(t,w)<=1)||(t.length===1&&w[0]===t))||(w.length===1&&nt.some(t=>t[0]===w)))&&!/\d/.test(parts[k])))k++;else break;}
  return parts.slice(k).join(' ').replace(/^[,;:\-–\s]+/,'').trim();
 }
-function parseRota(lines){
+function parseSchedule(lines){
  const sched=[];
  lines.forEach((ln,i)=>{
   if(PCg.test(ln))return;const m=ln.match(TR);if(!m)return;
@@ -737,7 +734,11 @@ function parseRota(lines){
   const st=m[1].padStart(2,'0')+':'+m[2],en=m[3].padStart(2,'0')+':'+m[4];
   sched.push({name,time:st,end:en,dur:((toMin(en)-toMin(st))+1440)%1440||null,addr:''});
  });
- if(!sched.length)return null;
+ return sched;
+}
+/* fill addresses for the given people from an address list; returns how many were matched */
+function matchAddresses(lines,sched){
+ let n=0;
  const pc=lines.map((l,i)=>PCg.test(l)?i:-1).filter(i=>i>=0);
  pc.forEach((pi,k)=>{
   const stop=k?pc[k-1]:-1;
@@ -749,11 +750,12 @@ function parseRota(lines){
    if(j===pi)parts=[stripName(pcLine,hit.name)];
    else{const rest=stripName(lines[j],hit.name);if(rest)parts.push(rest);for(let q=j+1;q<pi;q++)if(!noise.test(lines[q]))parts.push(lines[q]);parts.push(pcLine);}
    hit.addr=parts.map(s=>s.replace(/\s*\|\s*/g,', ').replace(TR,'').trim()).filter(Boolean).join(', ').replace(/\s*,\s*,+/g,',').replace(/^,\s*/,'');
-   break;
+   n++;break;
   }
  });
- return sched.sort((a,b)=>a.time.localeCompare(b.time));
+ return n;
 }
+function parseRota(lines){const s=parseSchedule(lines);if(!s.length)return null;matchAddresses(lines,s);return s.sort((a,b)=>a.time.localeCompare(b.time));}
 /* use the two-part reading when the rota has time ranges without addresses on the same line */
 function readRota(lines){
  const r=parseRota(lines);
@@ -958,15 +960,43 @@ function showFound(src){
  $('pdfNote').textContent=(rotaInfo?`${rotaInfo.n} visit${rotaInfo.n>1?'s':''} on the shift, in time order. Addresses matched for ${rotaInfo.m} of them from the address list (other people in the list were ignored).`:`Found ${found.length} address${found.length>1?'es':''} in the ${src}.`)+' Check and correct them'+(src==='PDF'?'':' (photos can misread letters)')+', then add.';
  $('pdfBox').hidden=false;renderFound();status('');return true;
 }
-$('imgIn').onchange=async e=>{
- const fs=[...e.target.files];e.target.value='';if(!fs.length)return;
- status('Loading the text reader (first time takes a little longer)…');
- try{let lines=[];for(const f of fs)lines=lines.concat(await ocrLines(f));
-  found=readRota(lines);
-  if(!showFound(fs.length>1?'photos':'photo'))status(lines.length?'Couldn\'t find any UK postcodes in that photo. Try a sharper, straight-on photo, or type the visits in.':'No text found in that photo.');
- }catch(x){status('Couldn\'t read that photo. Check your internet connection (the text reader loads online) and try again.');}
-};
 
+/* ---------- two-step rota reading ---------- */
+async function readFiles(fs){let lines=[];
+ for(const f of fs){if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){status('Reading PDF…');lines=lines.concat(await pdfLines(await f.arrayBuffer()));}
+  else{status('Loading the text reader (first time takes a little longer)…');lines=lines.concat(await ocrLines(f));}}
+ return lines;}
+function stepUI(){
+ const named=found.length>0,missing=found.filter(f=>!f.addr).length;
+ $('rotaAddrL').setAttribute('aria-disabled',named?'false':'true');$('rotaAddr').disabled=!named;
+ $('rotaStep').textContent=!named?'Step 1: choose the page with the names and visit times.'
+  :missing?`Step 2: choose the page with the addresses. ${missing} of ${found.length} still need an address.`:'All addresses found. Check the list, then tap "Add ticked visits".';
+}
+$('rotaNames').onchange=async e=>{
+ const fs=[...e.target.files];e.target.value='';if(!fs.length)return;
+ try{const lines=await readFiles(fs);
+  if(!lines.length){status('No text found. Try a sharper, straight-on photo or a screenshot.');return;}
+  const s=parseSchedule(lines).sort((a,b)=>a.time.localeCompare(b.time));
+  if(!s.length){status('No names with visit times (like "Jennifer Pearce 07:00 to 07:45") found on that page.');return;}
+  const got=matchAddresses(lines,s);
+  found=s.map(x=>({label:x.name,full:x.name,addr:x.addr,time:x.time+'–'+x.end,dur:x.dur,on:!!x.addr}));
+  if($('pdfInit').checked)found.forEach(v=>v.label=initials(v.label));
+  $('pdfNote').textContent=`Step 1 done: ${found.length} visit${found.length>1?'s':''} on the shift, numbered in time order.`+(got?` ${got} address${got>1?'es were':' was'} on the same page.`:'')+' Check names and times are right.';
+  $('pdfBox').hidden=false;renderFound();stepUI();status('');
+ }catch(x){status('Couldn\'t read that file. Check your internet connection (the reader loads online) and try again.');}
+};
+$('rotaAddr').onchange=async e=>{
+ const fs=[...e.target.files];e.target.value='';if(!fs.length||!found.length)return;
+ try{const lines=await readFiles(fs);
+  const want=found.filter(f=>!f.addr).map(f=>({name:f.full||f.label,addr:'',ref:f}));
+  const n=matchAddresses(lines,want);
+  want.forEach(w=>{if(w.addr){w.ref.addr=w.addr;w.ref.on=true;}});
+  const left=found.filter(f=>!f.addr).length;
+  $('pdfNote').textContent=`Step 2 done: matched ${n} address${n===1?'':'es'} to the names from step 1; anyone else on that page was ignored.`+(left?` ${left} still missing. Type ${left>1?'them':'it'} in, or read another page.`:'')+' Check them, then add.';
+  renderFound();stepUI();status(lines.length?'':'No text found on that page.');
+ }catch(x){status('Couldn\'t read that file. Check your internet connection and try again.');}
+};
+document.querySelectorAll('.btnl').forEach(l=>l.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();l.querySelector('input').click();}}));
 /* ---------- settings ---------- */
 const setIds=['rate','paidMode','hmrc','tax','app','perMonth','start','end','buffer','pickMin','traffic','defDur','lead'];
 function syncSettings(){setIds.forEach(k=>{$(k).value=(k==='rate'&&!S.set.rate)?'':S.set[k];});['home','office'].forEach(k=>{if(S[k])$(k+'Addr').value=S[k].addr;});}
