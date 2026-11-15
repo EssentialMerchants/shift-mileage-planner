@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shift Mileage Planner</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE: practical, calm, a tool used between shifts.
+   IDEA: a UK road atlas + mileage logbook.
+   PICTURE: the live map with numbered stops and the route line.
+   COLOUR and TYPE: motorway-sign blue, white, number-plate yellow accent; Overpass (highway lettering).
+   LAYOUT: map + stops side by side, results strip, then logbook and forecast. */
+:root{color-scheme:light dark;
+--bg:light-dark(#f4f6f9,#0d1b2a);--card:light-dark(#fff,#13263a);--ink:light-dark(#0d1b2a,#eef3f8);
+--mute:light-dark(#5b6b7c,#9fb2c6);--line:light-dark(#d9e0e8,#24405c);
+--blue:#0b4f9c;--blue2:light-dark(#0b4f9c,#5aa0ef);--yel:#f7c600;--red:light-dark(#b42318,#ff8a80);--ok:light-dark(#1e6b3a,#7fd49b)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Overpass,system-ui,sans-serif;overflow-x:clip}
+header{background:var(--blue);color:#fff;padding:14px max(3vw,14px);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+header h1{margin:0;font-size:24px;font-weight:800;line-height:1.1}
+header small{opacity:.85}
+.wrap{padding:16px max(3vw,14px);max-width:1300px;margin:0 auto}
+.grid{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:16px}
+@media(max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+h2{font-size:18px;margin:0 0 10px;font-weight:800}
+label{font-size:14px;color:var(--mute);display:block;margin:8px 0 3px}
+input,select,button{font:inherit;font-size:16px}
+input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);min-height:44px}
+button{min-height:44px;padding:8px 14px;border-radius:7px;border:1px solid var(--blue2);background:transparent;color:var(--blue2);cursor:pointer;font-weight:600}
+button.pri{background:var(--blue);border-color:var(--blue);color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid var(--yel);outline-offset:2px}
+button:disabled{opacity:.45;cursor:default}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+.row>*{flex:1 1 auto}
+#map{height:min(62vh,560px);min-height:340px;border-radius:10px;border:1px solid var(--line)}
+ol#stops{list-style:none;margin:10px 0 0;padding:0}
+#stops li{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+#stops li.sel{background:color-mix(in srgb,var(--yel) 25%,transparent)}
+.num{width:30px;height:30px;border-radius:50%;background:var(--yel);color:#111;font-weight:800;display:grid;place-items:center;font-size:15px}
+.num.h{border-radius:6px;background:var(--blue);color:#fff}
+.addr{font-size:13px;color:var(--mute);overflow-wrap:anywhere}
+.lbl{font-weight:600;overflow-wrap:anywhere}
+.from{font-size:13px;color:var(--blue2)}
+.acts{display:flex;gap:4px}
+.acts button{min-width:40px;min-height:40px;padding:4px 8px}
+.warn{color:var(--red);font-size:13px}
+.big{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}
+.stat{background:var(--bg);border-radius:8px;padding:10px}
+.stat b{display:block;font-size:clamp(22px,4vw,30px);line-height:1.1;font-weight:800;white-space:nowrap}
+.stat span{font-size:13px;color:var(--mute)}
+.gap b{color:var(--red)}.gain b{color:var(--ok)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+td.n,th.n{text-align:right;white-space:nowrap}
+.scroll{overflow-x:auto}
+a{color:var(--blue2)}
+.links a{margin-right:10px;white-space:nowrap}
+.note{font-size:13px;color:var(--mute)}
+#status{font-size:14px;min-height:20px;color:var(--mute);margin-top:6px}
+.chk{display:flex;gap:8px;align-items:center;margin-top:10px;color:var(--ink);font-size:15px}
+.chk input{width:22px;min-height:22px}
+.ck{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.seg{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}.seg button{min-width:72px;padding:6px 8px;font-size:14px}
+.ck small{display:block;color:var(--mute);font-size:13px}
+.seg button[aria-pressed=true].g{background:var(--ok);border-color:var(--ok);color:#fff}
+.seg button[aria-pressed=true].d{background:var(--red);border-color:var(--red);color:#fff}
+.seg button[aria-pressed=true].y{background:var(--yel);border-color:var(--yel);color:#111}
+@media(max-width:600px){.ck{grid-template-columns:minmax(0,1fr)}.seg{justify-content:flex-start}.seg button{flex:1 1 40%}}
+.mk{width:28px;height:28px;border-radius:50%;background:var(--yel);color:#111;border:2px solid #111;font:800 14px Overpass,sans-serif;display:grid;place-items:center}
+.mk.h{border-radius:5px;background:#0b4f9c;color:#fff;border-color:#fff}
+@media(max-width:600px){table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:8px;border-bottom:1px solid var(--line)}.stack td{display:flex;justify-content:space-between;gap:12px;border:0;padding:3px 0}.stack td::before{content:attr(data-l);color:var(--mute)}}
+</style>
+</head>
+<body>
+<header><div style="flex:1"><h1>Shift Mileage Planner</h1><small>Plan visit routes, see mileage, compare with what you're paid</small></div><button id="unitBtn" style="color:#fff;border-color:#fff">Show km</button></header>
+<div class="wrap">
+<section class="card" id="clock" style="margin-bottom:16px">
+ <h2>Shift clock</h2>
+ <div id="clkIdle">
+  <div class="row">
+   <div><label for="vModel">Make and model</label><input id="vModel" placeholder="e.g. Toyota Yaris 1.5 Hybrid"></div>
+   <div><label for="vDesc">Description</label><input id="vDesc" placeholder="e.g. Silver 5-door, roof rack"></div>
+   <div><label for="vReg">Registration</label><input id="vReg" placeholder="e.g. AB12 CDE" autocapitalize="characters" style="text-transform:uppercase"></div>
+  </div>
+  <div id="vNote" class="note"></div>
+  <h2 style="margin-top:14px;font-size:16px">Vehicle checks before you drive</h2>
+  <div id="checks"></div>
+  <div class="row" style="margin-top:6px"><button id="chkAll">Mark all good</button><button id="chkReset">Reset checks</button></div>
+  <div id="chkWarn" class="warn" style="margin-top:6px"></div>
+  <div class="row" style="margin-top:8px">
+   <div><label for="odoS">Odometer at start (optional)</label><input id="odoS" type="number" min="0" step="1" inputmode="numeric"></div>
+   <div><label for="clkMode">I'm starting by</label><select id="clkMode"><option value="drive">Driving to the first visit</option><option value="work">Working (e.g. at the office)</option></select></div>
+   <button id="clkStart" class="pri">Start shift</button>
+  </div>
+ </div>
+ <div id="clkRun" hidden>
+  <div class="big" id="clkStats"></div>
+  <div class="row"><button id="clkToggle" class="pri" style="flex:2"></button></div>
+  <div class="row" style="margin-top:8px">
+   <div><label for="odoE">Odometer at end (optional)</label><input id="odoE" type="number" min="0" step="1" inputmode="numeric"></div>
+   <button id="clkEnd">End shift</button><button id="clkCancel">Discard</button>
+  </div>
+  <p class="note">The clock keeps running if you close the page. Ending the shift saves it to the logbook.</p>
+ </div>
+</section>
+<div class="grid">
+ <section class="card">
+  <h2>Home and office</h2>
+  <label for="homeAddr">Home</label>
+  <div class="row"><div style="flex:3"><input id="homeAddr" placeholder="Home address or postcode" autocomplete="street-address"></div><button id="homeSet" class="pri" data-k="home">Set</button></div>
+  <div id="homeInfo" class="note"></div>
+  <label for="officeAddr">Office (optional)</label>
+  <div class="row"><div style="flex:3"><input id="officeAddr" placeholder="Office address or postcode"></div><button id="officeSet" class="pri" data-k="office">Set</button></div>
+  <div id="officeInfo" class="note"></div>
+  <div class="row">
+   <div><label for="start">Start at</label><select id="start"><option value="home">Home</option><option value="office">Office</option></select></div>
+   <div><label for="end">Finish at</label><select id="end"><option value="home">Home</option><option value="office">Office</option><option value="last">Last visit</option></select></div>
+  </div>
+  <h2 style="margin-top:16px">Visits</h2>
+  <label for="stopLabel">Label (use initials or a code, not the person's full name)</label>
+  <input id="stopLabel" placeholder="e.g. JB, Visit 1" list="places">
+  <datalist id="places"></datalist>
+  <label for="stopAddr">Address or postcode</label>
+  <div class="row"><div style="flex:3"><input id="stopAddr" placeholder="e.g. 12 Gloucester Rd, Bristol BS7"></div><button id="addStop" class="pri">Add</button></div>
+  <label class="chk" style="margin-top:12px"><span style="font-weight:600;color:var(--blue2)">Import visits from a PDF rota</span><input type="file" id="pdfIn" accept="application/pdf" style="width:auto"></label>
+  <div id="pdfBox" hidden style="margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:10px">
+   <div class="note" id="pdfNote"></div>
+   <label class="chk"><input type="checkbox" id="pdfInit" checked> Shorten names to initials</label>
+   <label class="chk"><input type="checkbox" id="pdfReplace"> Replace my current visits</label>
+   <div id="pdfRows"></div>
+   <div class="row" style="margin-top:8px"><button id="pdfAdd" class="pri">Add ticked visits</button><button id="pdfCancel">Cancel</button></div>
+  </div>
+  <div class="row" style="margin-top:10px"><button id="optBtn">Optimise order</button><button id="revBtn">Reverse</button><button id="clrBtn">Clear all</button></div>
+  <div id="status" role="status"></div>
+  <ol id="stops"></ol>
+  <p class="note">Tap ⇄ on one visit, then ⇄ on another, to swap them. Drag a pin on the map to fix a wrong location.</p>
+ </section>
+ <section>
+  <div id="map"></div>
+  <div class="card" style="margin-top:16px">
+   <h2>This route</h2>
+   <div class="big" id="sum"></div>
+   <div class="scroll"><table class="stack" id="legs"></table></div>
+   <p class="links" id="nav"></p>
+   <div class="row">
+    <div><label for="shDate">Shift date</label><input type="date" id="shDate"></div>
+    <div><label for="shName">Shift / home</label><input id="shName" placeholder="e.g. Northville Ave"></div>
+    <div><label for="shPaid">Actually paid £ (optional)</label><input id="shPaid" type="number" step="0.01" min="0" inputmode="decimal"></div>
+    <button id="saveShift" class="pri">Save to logbook</button>
+   </div>
+  </div>
+ </section>
+</div>
+
+<section class="card" style="margin-top:16px">
+ <h2>Logbook and forecast</h2>
+ <div class="scroll"><table class="stack" id="per"></table></div>
+ <div class="big" id="fc"></div>
+ <div class="row" style="max-width:520px"><div><label for="perMonth">Shifts you expect per month</label><input id="perMonth" type="number" min="0" step="1" inputmode="numeric"></div></div>
+ <div class="scroll" style="margin-top:12px"><table class="stack" id="log"></table></div>
+ <div class="row" style="margin-top:12px"><button id="csvBtn">Export CSV</button><button id="bakBtn">Backup (JSON)</button><label class="chk" style="margin:0"><span>Restore backup</span><input type="file" id="bakIn" accept="application/json" style="width:auto"></label></div>
+</section>
+
+<section class="card" style="margin-top:16px">
+ <h2>Settings</h2>
+ <div class="row">
+  <div><label for="rate">Your employer pays (£ per mile)</label><input id="rate" type="number" step="0.01" min="0" inputmode="decimal" placeholder="e.g. 0.30"></div>
+  <div><label for="paidMode">Which miles are paid</label><select id="paidMode"><option value="between">Only between visits</option><option value="all">All miles incl. to/from home</option><option value="noReturn">All except the final drive (to home/office)</option></select></div>
+  <div><label for="hmrc">HMRC rate, £/mile (cars: 0.45 for the first 10,000 business miles a tax year, then 0.25)</label><input id="hmrc" type="number" step="0.01" min="0" inputmode="decimal"></div>
+  <div><label for="tax">Your income tax rate</label><select id="tax"><option value="0.2">20% basic</option><option value="0.4">40% higher</option><option value="0">Not a taxpayer</option></select></div>
+  <div><label for="app">Map app for navigation</label><select id="app"><option value="google">Google Maps</option><option value="apple">Apple Maps</option><option value="waze">Waze</option></select></div>
+ </div>
+ <p class="note">Gap = what HMRC's rate would give for these miles minus what you're paid. If your employer pays less than the HMRC rate, you may be able to claim tax relief on the gap (Mileage Allowance Relief), but check your own situation with HMRC first. The tax-relief figure is the gap × your tax rate.<br>
+ Your addresses stay saved in this browser on this device. To look them up, they're sent to OpenStreetMap (Nominatim), postcodes.io and the OSRM route server. Distances are estimates for driving by road.</p>
+</section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+{
+const KEY='shiftMileagePlanner.v1';
+const def={home:null,office:null,stops:[],places:[],log:[],clock:null,vehicle:{model:'',desc:'',reg:''},checks:{},set:{rate:0,paidMode:'between',hmrc:0.45,tax:0.2,app:'google',start:'home',end:'home',unit:'mi',perMonth:16}};
+let S;
+function load(j){const s=Object.assign({},def,j||{});s.set=Object.assign({},def.set,(j&&j.set)||{});s.vehicle=Object.assign({},def.vehicle,(j&&j.vehicle)||{});s.checks=Object.assign({},(j&&j.checks)||{});if(s.vehicle.type){if(s.vehicle.type!=='car'&&s.vehicle.type!=='van')s.set.hmrc=0.45;delete s.vehicle.type;}
+ if(s.base&&!s.home){s.home=s.base;}delete s.base;if('round' in s.set){if(!s.set.round)s.set.end='last';delete s.set.round;}return s;}
+try{S=load(JSON.parse(localStorage.getItem(KEY)||'{}'));}catch(e){S=load({});}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const mi=m=>m/1609.344;
+const U=()=>S.set.unit==='km'?'km':'mi';
+const dm=m=>(S.set.unit==='km'?m/1000:mi(m)).toFixed(1)+' '+U();      /* metres -> display */
+const dmi=x=>(S.set.unit==='km'?x*1.609344:x).toFixed(1)+' '+U();     /* miles -> display */
+const gbp=x=>'£'+(Math.round(x*100)/100).toFixed(2);
+const status=t=>{$('status').textContent=t||''};
+const uid=()=>Math.random().toString(36).slice(2,9);
+const NAMES={home:'Home',office:'Office'};
+let route=null, fromPts={}, swapSel=null;
+
+/* ---------- map ---------- */
+let map=null,layer=null;
+if(window.L){
+ map=L.map('map').setView([51.4545,-2.5879],12);
+ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+ layer=L.layerGroup().addTo(map);
+}else{$('map').innerHTML='<p style="padding:16px">The map library didn\'t load. Check your internet connection and reopen the file.</p>';}
+
+/* ---------- geocoding (Nominatim: max 1 request per second; postcodes.io fallback) ---------- */
+let lastNom=0;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const PC=/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i;
+async function geocode(q){
+ const wait=1100-(Date.now()-lastNom); if(wait>0) await sleep(wait); lastNom=Date.now();
+ try{
+  const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=gb&q='+encodeURIComponent(q),{headers:{'Accept-Language':'en-GB'}});
+  if(r.ok){const j=await r.json(); if(j[0]) return {lat:+j[0].lat,lng:+j[0].lon,how:'address'};}
+ }catch(e){}
+ const m=q.match(PC);
+ if(m){
+  try{const r=await fetch('https://api.postcodes.io/postcodes/'+encodeURIComponent(m[1]+m[2]));
+   if(r.ok){const j=await r.json(); if(j.result) return {lat:j.result.latitude,lng:j.result.longitude,how:'postcode centre'};}}catch(e){}
+ }
+ return null;
+}
+
+/* ---------- routing (OSRM public server) ---------- */
+const OSRM='https://router.project-osrm.org';
+const cstr=pts=>pts.map(p=>p.lng.toFixed(6)+','+p.lat.toFixed(6)).join(';');
+async function osrmRoute(pts){
+ const r=await fetch(`${OSRM}/route/v1/driving/${cstr(pts)}?overview=full&geometries=geojson&steps=false`);
+ const j=await r.json(); if(j.code!=='Ok') throw new Error(j.message||j.code); return j.routes[0];
+}
+async function osrmTable(pts,sources){
+ const q=sources?'&sources='+sources.join(';'):'';
+ const r=await fetch(`${OSRM}/table/v1/driving/${cstr(pts)}?annotations=distance,duration${q}`);
+ const j=await r.json(); if(j.code!=='Ok') throw new Error(j.message||j.code); return j;
+}
+
+/* ---------- order optimiser. Nodes: 0=start, 1..n visits, n+1=fixed finish (if any).
+   Exact for up to 8 visits, otherwise nearest-neighbour + 2-opt ---------- */
+function tourCost(D,ord,endIx){let c=D[0][ord[0]];for(let i=0;i<ord.length-1;i++)c+=D[ord[i]][ord[i+1]];if(endIx!=null)c+=D[ord[ord.length-1]][endIx];return c;}
+function bestOrder(D,n,endIx){
+ const idx=[...Array(n)].map((_,i)=>i+1);
+ if(n<=8){
+  let best=null,bc=Infinity;
+  const perm=(a,k)=>{if(k===a.length){const c=tourCost(D,a,endIx);if(c<bc){bc=c;best=a.slice();}return;}
+   for(let i=k;i<a.length;i++){[a[k],a[i]]=[a[i],a[k]];perm(a,k+1);[a[k],a[i]]=[a[i],a[k]];}};
+  perm(idx,0);return best;
+ }
+ let left=new Set(idx),cur=0,ord=[];
+ while(left.size){let b=null,bd=Infinity;for(const j of left)if(D[cur][j]<bd){bd=D[cur][j];b=j;}ord.push(b);left.delete(b);cur=b;}
+ let imp=true;while(imp){imp=false;for(let i=0;i<ord.length-1;i++)for(let k=i+1;k<ord.length;k++){
+  const t=ord.slice(0,i).concat(ord.slice(i,k+1).reverse(),ord.slice(k+1));
+  if(tourCost(D,t,endIx)<tourCost(D,ord,endIx)-1){ord=t;imp=true;}}}
+ return ord;
+}
+
+/* ---------- route parts ---------- */
+const pts=()=>S.stops.filter(s=>s.lat!=null);
+const startPt=()=>S[S.set.start]||null;
+const endFixed=()=>S.set.end!=='last';
+const endPt=()=>endFixed()?(S[S.set.end]||null):null;
+function seq(){const s=[startPt(),...pts()];if(endFixed())s.push(endPt());return s;}
+function legPaid(i,n){
+ const mode=S.set.paidMode,first=i===0,final=endFixed()&&i===n-1;
+ if(mode==='between'&&(first||final))return false;
+ if(mode==='noReturn'&&final)return false;
+ return true;
+}
+const paidMeters=legs=>legs.reduce((a,l,i)=>legPaid(i,legs.length)?a+l.distance:a,0);
+function money(totalMi,paidMi,actual){
+ const pay=paidMi*(+S.set.rate||0), hm=totalMi*(+S.set.hmrc||0);
+ const paidNow=actual!=null&&actual!==''?+actual:pay, gap=hm-paidNow;
+ return {pay,hm,gap,relief:Math.max(0,gap)*(+S.set.tax||0)};
+}
+function missing(){
+ const need=[];if(!startPt())need.push(NAMES[S.set.start]);if(endFixed()&&!endPt()&&S.set.end!==S.set.start)need.push(NAMES[S.set.end]);
+ return need;
+}
+
+/* ---------- rendering ---------- */
+function infoLine(k){const p=S[k];return p?`${esc(p.addr)}${p.how==='postcode centre'?' <span class="warn">(postcode centre only. Drag the pin if needed)</span>':''}`:'';}
+function renderStops(){
+ $('homeInfo').innerHTML=infoLine('home');$('officeInfo').innerHTML=infoLine('office');
+ const need=missing();
+ status(need.length&&!$('status').textContent?'Set your '+need.join(' and ')+' address to plan the route.':$('status').textContent);
+ $('stops').innerHTML=S.stops.map((s,i)=>{
+  const fr=fromPts[s.id]||{};
+  const fl=['home','office'].filter(k=>fr[k]!=null).map(k=>`${dm(fr[k])} from ${NAMES[k].toLowerCase()}`).join(' · ');
+  return `<li class="${swapSel===s.id?'sel':''}">
+  <span class="num">${i+1}</span>
+  <div><div class="lbl">${esc(s.label||'Visit '+(i+1))}</div><div class="addr">${esc(s.addr)}</div>
+  ${s.lat==null?'<div class="warn">Address not found. Remove it and try a postcode.</div>':''}
+  ${s.how==='postcode centre'?'<div class="warn">Postcode centre only. Drag the pin if it\'s wrong.</div>':''}
+  ${fl?`<div class="from">${fl}</div>`:''}</div>
+  <div class="acts"><button data-a="up" data-i="${i}" aria-label="Move up" ${i?'':'disabled'}>↑</button><button data-a="dn" data-i="${i}" aria-label="Move down" ${i<S.stops.length-1?'':'disabled'}>↓</button><button data-a="sw" data-i="${i}" aria-label="Swap">⇄</button><button data-a="rm" data-i="${i}" aria-label="Remove">✕</button></div></li>`;}).join('')
+  || '<li style="display:block;color:var(--mute)">No visits yet. Add them above.</li>';
+ $('places').innerHTML=S.places.map(p=>`<option value="${esc(p.label)}">${esc(p.addr)}</option>`).join('');
+}
+function icon(t,cls){return L.divIcon({className:'',html:`<div class="mk ${cls||''}">${t}</div>`,iconSize:[28,28],iconAnchor:[14,14]});}
+function renderMap(){
+ if(!map)return; layer.clearLayers(); const ll=[];
+ ['home','office'].forEach(k=>{const b=S[k];if(!b)return;
+  const m=L.marker([b.lat,b.lng],{icon:icon(k==='home'?'H':'O','h'),draggable:true}).addTo(layer).bindTooltip(NAMES[k]);
+  m.on('dragend',e=>{const p=e.target.getLatLng();b.lat=p.lat;b.lng=p.lng;b.how='pin';save();recalc();});ll.push([b.lat,b.lng]);});
+ S.stops.forEach((s,i)=>{if(s.lat==null)return;
+  const m=L.marker([s.lat,s.lng],{icon:icon(i+1),draggable:true}).addTo(layer).bindTooltip(esc(s.label||'Visit '+(i+1)));
+  m.on('dragend',e=>{const p=e.target.getLatLng();s.lat=p.lat;s.lng=p.lng;s.how='pin';rememberPlace(s);save();recalc();});ll.push([s.lat,s.lng]);});
+ if(route) L.geoJSON(route.geometry,{style:{color:'#0b4f9c',weight:5,opacity:.85}}).addTo(layer);
+ if(ll.length>1) map.fitBounds(ll,{padding:[30,30]}); else if(ll.length) map.setView(ll[0],14);
+}
+function navLink(p){
+ const ll=p.lat.toFixed(6)+','+p.lng.toFixed(6);
+ if(S.set.app==='apple')return 'https://maps.apple.com/?daddr='+ll+'&dirflg=d';
+ if(S.set.app==='waze')return 'https://waze.com/ul?ll='+ll+'&navigate=yes';
+ return 'https://www.google.com/maps/dir/?api=1&destination='+ll+'&travelmode=driving';
+}
+function fullRouteLinks(sq){
+ if(S.set.app!=='google'||sq.length<2)return '<span class="note">Use the Navigate links for each leg.</span>';
+ const out=[];let i=0,part=1;
+ while(i<sq.length-1){const chunk=sq.slice(i,i+11);const o=chunk[0],d=chunk[chunk.length-1],w=chunk.slice(1,-1);
+  const u='https://www.google.com/maps/dir/?api=1&travelmode=driving&origin='+o.lat+','+o.lng+'&destination='+d.lat+','+d.lng+(w.length?'&waypoints='+w.map(p=>p.lat+','+p.lng).join('|'):'');
+  out.push(`<a href="${esc(u)}" target="_blank" rel="noopener">Whole route in Google Maps${sq.length>11?' (part '+part+')':''}</a>`);
+  i+=chunk.length-1;part++;}
+ return out.join(' ');
+}
+function ptName(p,i){if(p===S.home)return 'Home';if(p===S.office)return 'Office';return esc(p.label||'Visit '+i);}
+function renderRoute(){
+ if(!route){$('sum').innerHTML='<div class="note">Set your start point and add at least one visit to see mileage.</div>';$('legs').innerHTML='';$('nav').innerHTML='';return;}
+ const totM=route.distance,paidM=paidMeters(route.legs);
+ const t=mi(totM),p=mi(paidM),mn=money(t,p,null),hrs=route.duration/3600;
+ $('sum').innerHTML=`<div class="stat"><b>${dm(totM)}</b><span>total driving</span></div>
+  <div class="stat"><b>${dm(paidM)}</b><span>paid distance</span></div>
+  <div class="stat"><b>${S.set.rate?gbp(mn.pay):'—'}</b><span>${S.set.rate?'expected mileage pay':'enter your rate in Settings'}</span></div>
+  <div class="stat"><b>${gbp(mn.hm)}</b><span>at HMRC £${S.set.hmrc}/mile</span></div>
+  <div class="stat ${mn.gap>0?'gap':'gain'}"><b>${gbp(Math.abs(mn.gap))}</b><span>${mn.gap>0?'under HMRC rate':'over HMRC rate'}</span></div>
+  <div class="stat"><b>${Math.floor(hrs)}h ${String(Math.round(hrs%1*60)).padStart(2,'0')}m</b><span>driving time, no traffic</span></div>`;
+ const sq=seq(),n=route.legs.length;
+ $('legs').innerHTML=`<thead><tr><th>From</th><th>To</th><th class="n">${U()==='km'?'Km':'Miles'}</th><th class="n">Mins</th><th>Paid?</th><th></th></tr></thead><tbody>`+
+  route.legs.map((l,i)=>{const a=sq[i],b=sq[i+1];
+   return `<tr><td data-l="From">${ptName(a,i)}</td><td data-l="To">${ptName(b,i+1)}</td><td class="n" data-l="Distance">${dm(l.distance)}</td><td class="n" data-l="Mins">${Math.round(l.duration/60)}</td><td data-l="Paid?">${legPaid(i,n)?'Yes':'No'}</td><td data-l="Go"><a href="${esc(navLink(b))}" target="_blank" rel="noopener">Navigate</a></td></tr>`;}).join('')+'</tbody>';
+ $('nav').innerHTML=fullRouteLinks(sq);
+}
+const hm_=min=>{if(min==null||isNaN(min))return '—';min=Math.round(min);return Math.floor(min/60)+'h '+String(min%60).padStart(2,'0')+'m';};
+const paidOf=r=>r.actual!=null&&r.actual!==''?+r.actual:money(r.miles,r.paidMiles,null).pay;
+function periods(){
+ const now=new Date(),day=(now.getDay()+6)%7;
+ const iso=d=>new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+ const today=iso(now),ws=iso(new Date(now.getFullYear(),now.getMonth(),now.getDate()-day)),ms=today.slice(0,7);
+ return [['Today',r=>r.date===today],['This week',r=>r.date>=ws&&r.date<=today],['This month',r=>r.date.startsWith(ms)],['All logged',()=>true]];
+}
+function agg(rows){return rows.reduce((a,r)=>{const m=money(r.miles,r.paidMiles,null);a.n++;a.mi+=r.miles;a.paid+=paidOf(r);a.hm+=m.hm;
+ if(r.shiftMin!=null){a.timed++;a.sh+=r.shiftMin;a.dr+=r.driveMin||0;a.wk+=r.workMin||0;}return a;},{n:0,timed:0,mi:0,paid:0,hm:0,sh:0,dr:0,wk:0});}
+function renderLog(){
+ const rowsSorted=S.log.slice().sort((a,b)=>(b.start||b.date).localeCompare(a.start||a.date));
+ $('per').innerHTML=`<thead><tr><th>Period</th><th class="n">Shifts</th><th class="n">Shift time</th><th class="n">Driving</th><th class="n">Working</th><th class="n">Distance</th><th class="n">Paid £</th><th class="n">Gap to HMRC £</th></tr></thead><tbody>`+
+  periods().map(([name,fn])=>{const a=agg(S.log.filter(fn));
+   return `<tr><td data-l="Period"><b>${name}</b></td><td class="n" data-l="Shifts">${a.n}</td><td class="n" data-l="Shift time">${a.timed?hm_(a.sh):'—'}</td><td class="n" data-l="Driving">${a.timed?hm_(a.dr):'—'}</td><td class="n" data-l="Working">${a.timed?hm_(a.wk):'—'}</td><td class="n" data-l="Distance">${dmi(a.mi)}</td><td class="n" data-l="Paid £">${gbp(a.paid)}</td><td class="n" data-l="Gap to HMRC £">${gbp(a.hm-a.paid)}</td></tr>`;}).join('')+'</tbody>';
+ const all=agg(S.log),n=all.n,pm=+S.set.perMonth||0;
+ const avg=n?all.mi/n:0,avgPaid=n?all.paid/n:0,avgHm=n?all.hm/n:0,fGap=(avgHm-avgPaid)*pm;
+ $('fc').innerHTML=`<div class="stat"><b>${dmi(avg)}</b><span>average per shift</span></div>
+  <div class="stat"><b>${all.timed?hm_(all.dr/all.timed):'—'}</b><span>average driving per timed shift</span></div>
+  <div class="stat"><b>${dmi(avg*pm)}</b><span>forecast per month (${pm} shifts)</span></div>
+  <div class="stat"><b>${gbp(avgPaid*pm)}</b><span>forecast monthly mileage pay</span></div>
+  <div class="stat ${fGap>0?'gap':'gain'}"><b>${gbp(Math.abs(fGap))}</b><span>${fGap>0?'monthly gap to HMRC rate · tax relief ≈ '+gbp(fGap*S.set.tax):'monthly over HMRC rate'}</span></div>`;
+ $('log').innerHTML=n?`<thead><tr><th>Date</th><th>Shift</th><th class="n">Times</th><th class="n">Driving</th><th class="n">Working</th><th class="n">Distance</th><th class="n">Paid ${U()}</th><th class="n">Paid £</th><th class="n">Gap £</th><th>Vehicle and checks</th><th></th></tr></thead><tbody>`+
+  rowsSorted.map(r=>{const m=money(r.miles,r.paidMiles,r.actual);const est=!(r.actual!=null&&r.actual!=='');
+   const tm=r.start?new Date(r.start).toTimeString().slice(0,5)+'–'+new Date(r.end).toTimeString().slice(0,5)+' ('+hm_(r.shiftMin)+')':'—';
+   const src=r.odo?'odometer':(r.start?'planned route':'');
+   return `<tr><td data-l="Date">${esc(r.date)}</td><td data-l="Shift">${esc(r.name)}</td><td class="n" data-l="Times">${tm}</td><td class="n" data-l="Driving">${hm_(r.driveMin)}</td><td class="n" data-l="Working">${hm_(r.workMin)}</td><td class="n" data-l="Distance">${dmi(r.miles)}${src?' <span class="note">'+src+'</span>':''}</td><td class="n" data-l="Paid distance">${dmi(r.paidMiles)}</td><td class="n" data-l="Paid £">${gbp(paidOf(r))}${est?' <span class="note">est.</span>':''}</td><td class="n" data-l="Gap £">${gbp(m.gap)}</td><td data-l="Vehicle">${r.vehicle?esc(vehText(r.vehicle)||'—'):'—'}${r.checks?`<div class="note${hasIssue(r.checks)?' warn':''}">${esc(checkText(r.checks))}</div>`:''}</td><td data-l=""><button data-del="${r.id}" aria-label="Delete entry">✕</button></td></tr>`;}).join('')+'</tbody>'
+  :'<tbody><tr><td class="note">No shifts logged yet. Use the shift clock, or plan a route and press "Save to logbook".</td></tr></tbody>';
+}
+function renderAll(){renderStops();renderMap();renderRoute();renderLog();$('unitBtn').textContent=S.set.unit==='km'?'Show miles':'Show km';renderClock();}
+
+/* ---------- recalculation ---------- */
+let rq=0;
+async function recalc(){
+ const my=++rq,p=pts(),sq=seq();
+ if(sq.some(x=>!x)||!p.length){route=null;fromPts={};if(!missing().length)status('');renderAll();return;}
+ status('Calculating road distances…');
+ try{
+  const bases=['home','office'].filter(k=>S[k]);
+  const [r,t]=await Promise.all([osrmRoute(sq),osrmTable([...bases.map(k=>S[k]),...p],bases.map((_,i)=>i))]);
+  if(my!==rq)return;
+  route=r;fromPts={};
+  p.forEach((s,j)=>{fromPts[s.id]={};bases.forEach((k,i)=>{fromPts[s.id][k]=t.distances[i][bases.length+j];});});
+  status('');
+ }catch(e){if(my!==rq)return;route=null;fromPts={};status('Couldn\'t reach the route server. Check your connection and try again.');}
+ renderAll();
+}
+
+/* ---------- actions ---------- */
+function rememberPlace(s){if(!s.label||s.lat==null)return;const i=S.places.findIndex(p=>p.label.toLowerCase()===s.label.toLowerCase());const rec={label:s.label,addr:s.addr,lat:s.lat,lng:s.lng,how:s.how};if(i>=0)S.places[i]=rec;else S.places.push(rec);}
+async function setBase(k){const q=$(k+'Addr').value.trim();if(!q)return;status('Finding '+NAMES[k].toLowerCase()+' address…');
+ const g=await geocode(q);if(!g){status(NAMES[k]+' address not found. Try adding the postcode.');return;}
+ S[k]={addr:q,...g};save();status('');recalc();}
+['home','office'].forEach(k=>{$(k+'Set').onclick=()=>setBase(k);$(k+'Addr').addEventListener('keydown',e=>{if(e.key==='Enter')setBase(k);});});
+$('stopLabel').addEventListener('change',()=>{const p=S.places.find(p=>p.label.toLowerCase()===$('stopLabel').value.trim().toLowerCase());if(p)$('stopAddr').value=p.addr;});
+async function addStop(){
+ const addr=$('stopAddr').value.trim(),label=$('stopLabel').value.trim();if(!addr)return;
+ const known=S.places.find(p=>p.addr===addr&&p.lat!=null);
+ let g=known?{lat:known.lat,lng:known.lng,how:known.how}:null;
+ if(!g){status('Finding address…');$('addStop').disabled=true;g=await geocode(addr);$('addStop').disabled=false;}
+ const s={id:uid(),label,addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null};
+ S.stops.push(s);rememberPlace(s);save();$('stopAddr').value='';$('stopLabel').value='';
+ status(g?'':'Address not found.');await recalc();
+}
+$('addStop').onclick=addStop;
+$('stopAddr').addEventListener('keydown',e=>{if(e.key==='Enter')addStop();});
+$('stops').addEventListener('click',e=>{
+ const b=e.target.closest('button');if(!b)return;const i=+b.dataset.i,a=b.dataset.a,st=S.stops;
+ if(a==='up'&&i>0)[st[i-1],st[i]]=[st[i],st[i-1]];
+ if(a==='dn'&&i<st.length-1)[st[i+1],st[i]]=[st[i],st[i+1]];
+ if(a==='rm'){st.splice(i,1);swapSel=null;}
+ if(a==='sw'){if(!swapSel){swapSel=st[i].id;renderStops();status('Now tap ⇄ on the visit to swap with.');return;}
+  const j=st.findIndex(s=>s.id===swapSel);swapSel=null;if(j>=0&&j!==i)[st[i],st[j]]=[st[j],st[i]];status('');}
+ save();recalc();
+});
+$('revBtn').onclick=()=>{S.stops.reverse();save();recalc();};
+$('clrBtn').onclick=()=>{if(!S.stops.length)return;const b=$('clrBtn');if(b.dataset.c){S.stops=[];delete b.dataset.c;b.textContent='Clear all';save();recalc();}
+ else{b.dataset.c=1;b.textContent='Tap again to clear';setTimeout(()=>{delete b.dataset.c;b.textContent='Clear all';},3000);}};
+$('optBtn').onclick=async()=>{
+ const p=pts(),s0=startPt(),e0=endPt();
+ if(!s0||(endFixed()&&!e0)||p.length<2){status('Set your start/finish and add at least two found visits first.');return;}
+ status('Finding the shortest order…');
+ try{const nodes=[s0,...p];if(endFixed())nodes.push(e0);
+  const t=await osrmTable(nodes,null);const ord=bestOrder(t.distances,p.length,endFixed()?p.length+1:null);
+  const bad=S.stops.filter(s=>s.lat==null);S.stops=ord.map(k=>p[k-1]).concat(bad);save();await recalc();status('Order optimised for shortest distance.');}
+ catch(e){status('Couldn\'t reach the route server.');}
+};
+$('saveShift').onclick=()=>{
+ if(!route){status('Plan a route first.');return;}
+ const a=$('shPaid').value;
+ S.log.push({id:uid(),date:$('shDate').value||new Date().toISOString().slice(0,10),name:$('shName').value.trim()||'Shift',miles:+mi(route.distance).toFixed(2),paidMiles:+mi(paidMeters(route.legs)).toFixed(2),actual:a===''?null:+a,stops:S.stops.length,vehicle:{...S.vehicle}});
+ save();$('shPaid').value='';renderLog();status('Saved to logbook.');
+};
+$('log').addEventListener('click',e=>{const b=e.target.closest('button[data-del]');if(!b)return;S.log=S.log.filter(r=>r.id!==b.dataset.del);save();renderLog();});
+function download(name,type,text){const u=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);}
+$('csvBtn').onclick=()=>{const h='Date,Shift,Start,End,Shift mins,Driving mins,Working mins,Miles,Paid miles,Paid £,HMRC value £,Gap £,Vehicle,Registration,Description,Checks\n';
+ const rows=S.log.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(r=>{const m=money(r.miles,r.paidMiles,r.actual);const paid=r.actual!=null&&r.actual!==''?+r.actual:m.pay;
+  const tt=x=>x?new Date(x).toTimeString().slice(0,5):'',mm=x=>x==null?'':Math.round(x);return [r.date,'"'+String(r.name).replace(/"/g,'""')+'"',tt(r.start),tt(r.end),mm(r.shiftMin),mm(r.driveMin),mm(r.workMin),r.miles.toFixed(1),r.paidMiles.toFixed(1),paid.toFixed(2),m.hm.toFixed(2),m.gap.toFixed(2),'"'+(r.vehicle&&r.vehicle.model||'')+'"',r.vehicle?r.vehicle.reg||'':'','"'+(r.vehicle&&r.vehicle.desc||'')+'"','"'+checkText(r.checks)+'"'].join(',');}).join('\n');
+ download('mileage-log.csv','text/csv',h+rows);};
+$('bakBtn').onclick=()=>download('mileage-planner-backup.json','application/json',JSON.stringify(S,null,1));
+$('bakIn').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{S=load(JSON.parse(await f.text()));save();status('Backup restored.');syncSettings();renderChecks();recalc();}catch(x){status('That file isn\'t a valid backup.');}e.target.value='';};
+$('unitBtn').onclick=()=>{S.set.unit=S.set.unit==='km'?'mi':'km';save();renderAll();};
+
+/* ---------- vehicle and checks ---------- */
+/* each option: [value, label, severity]  g = fine, y = needs attention soon, d = fix before driving */
+const CHECKS=[
+ {id:'tyres',n:'Tyres',d:'Pressure looks right, tread at least 1.6 mm, no cuts or bulges',o:[['ok','Good','g'],['low','Low pressure','y'],['worn','Worn tread','d'],['dmg','Cut or bulge','d']],safe:1},
+ {id:'lights',n:'Lights and indicators',d:'Headlights, brake lights, indicators and hazards all work',o:[['ok','All working','g'],['bulb','Bulb out','d'],['dirty','Dirty','y'],['crack','Cracked lens','y']],safe:1},
+ {id:'brakes',n:'Brakes',d:'Pedal feels firm, car stops straight, no grinding',o:[['ok','Working well','g'],['soft','Soft or spongy','d'],['noise','Noisy','y'],['pull','Pulls to one side','d']],safe:1},
+ {id:'warn',n:'Dashboard warning lights',d:'No warning lights stay on after starting the engine',o:[['ok','None on','g'],['amber','Amber light on','y'],['red','Red light on','d']],safe:1},
+ {id:'oil',n:'Engine oil',d:'Dipstick level between the min and max marks',o:[['ok','Level OK','g'],['low','Low, top up','y'],['vlow','Below minimum','d'],['leak','Leak under car','d']]},
+ {id:'cool',n:'Coolant',d:'Level between min and max in the header tank (check when the engine is cold)',o:[['ok','Level OK','g'],['low','Low, top up','y'],['leak','Leaking','d']]},
+ {id:'wash',n:'Screen wash',d:'Reservoir has enough fluid',o:[['ok','Full','g'],['low','Low','y'],['empty','Empty','y']]},
+ {id:'screen',n:'Windscreen',d:'Clear view, no chips or cracks in your line of sight',o:[['ok','Clear','g'],['dirty','Dirty','y'],['chip','Chipped','y'],['crack','Cracked','d']],safe:1},
+ {id:'wipers',n:'Wipers',d:'Clear the screen without smearing',o:[['ok','Working','g'],['smear','Smearing','y'],['dmg','Damaged or not working','d']],safe:1},
+ {id:'mirrors',n:'Mirrors',d:'Clean, secure and set for you',o:[['ok','Good','g'],['dirty','Dirty','y'],['loose','Loose','y'],['dmg','Cracked or damaged','d']],safe:1},
+ {id:'horn',n:'Horn',d:'Sounds when pressed',o:[['ok','Working','g'],['no','Not working','d']],safe:1},
+ {id:'body',n:'Bodywork',d:'Walk round the car: no new dents, scrapes or sharp edges',o:[['ok','No new damage','g'],['minor','New scratch or dent','y'],['sharp','Damaged, sharp edges','d']]},
+ {id:'inside',n:'Interior',d:'Clean, nothing loose that could slide under the pedals',o:[['ok','Clean and tidy','g'],['dirty','Dirty','y'],['loose','Loose items','y']]},
+ {id:'fuel',n:'Fuel / charge',d:'Enough for the whole shift plus a margin',o:[['ok','Enough for shift','g'],['low','Fill up during shift','y'],['vlow','Fuel light on','d']]},
+ {id:'ins',n:'Insurance for business use',d:'Your policy covers driving between visits for work',o:[['ok','Covered','g'],['unsure','Not sure','y'],['no','Not covered','d']]}
+];
+const CK=Object.fromEntries(CHECKS.map(c=>[c.id,c]));
+const optOf=(c,v)=>c.o.find(o=>o[0]===v);
+function snapChecks(ch){return CHECKS.filter(c=>ch[c.id]).map(c=>{const o=optOf(c,ch[c.id]);return {n:c.n,v:o[1],s:o[2]};});}
+function checkText(arr){
+ if(!arr)return '';
+ if(!Array.isArray(arr)){const L={good:'good',damaged:'damaged',dirty:'dirty'};const bad=Object.entries(arr).filter(([k,v])=>v!=='good').map(([k,v])=>k.split(' (')[0]+' '+(L[v]||v));return bad.length?bad.join(', '):'All good';}
+ if(!arr.length)return 'No checks';
+ const bad=arr.filter(x=>x.s!=='g').map(x=>x.n+': '+x.v.toLowerCase());
+ return (bad.length?bad.join(', '):'All good')+(arr.length<CHECKS.length?` (${arr.length}/${CHECKS.length} checked)`:'');
+}
+const hasIssue=arr=>Array.isArray(arr)?arr.some(x=>x.s!=='g'):arr&&Object.values(arr).some(v=>v!=='good');
+const vehText=v=>v?[v.model,v.reg].filter(Boolean).join(' · ')+(v.desc?' ('+v.desc+')':''):'';
+function renderChecks(){
+ Object.keys(S.checks).forEach(k=>{if(!CK[k]||!optOf(CK[k],S.checks[k]))delete S.checks[k];});
+ const ch=S.checks;
+ $('checks').innerHTML=CHECKS.map(c=>`<div class="ck"><span>${esc(c.n)}<small>${esc(c.d)}</small></span><div class="seg" role="group" aria-label="${esc(c.n)}">${c.o.map(([v,l,k])=>`<button class="${k}" data-c="${c.id}" data-v="${v}" aria-pressed="${ch[c.id]===v}">${esc(l)}</button>`).join('')}</div></div>`).join('');
+ const stop=CHECKS.filter(c=>ch[c.id]&&optOf(c,ch[c.id])[2]==='d');
+ const soon=CHECKS.filter(c=>ch[c.id]&&optOf(c,ch[c.id])[2]==='y');
+ $('chkWarn').innerHTML=(stop.length?`Fix before driving: ${stop.map(c=>esc(c.n)).join(', ')}. Don't drive until it's safe, and report it.`:'')+
+  (soon.length?`<div style="color:var(--mute)">Needs attention soon: ${soon.map(c=>esc(c.n)).join(', ')}.</div>`:'');
+ const done=Object.keys(ch).length;$('chkAll').textContent=done?`Mark the rest OK (${done}/${CHECKS.length} done)`:'Mark all OK';
+ $('vModel').value=S.vehicle.model||'';$('vDesc').value=S.vehicle.desc||'';$('vReg').value=S.vehicle.reg||'';
+}
+$('checks').addEventListener('click',e=>{const b=e.target.closest('button[data-c]');if(!b)return;const c=b.dataset.c;
+ if(S.checks[c]===b.dataset.v)delete S.checks[c];else S.checks[c]=b.dataset.v;save();renderChecks();});
+$('chkAll').onclick=()=>{CHECKS.forEach(c=>{if(!S.checks[c.id])S.checks[c.id]='ok';});save();renderChecks();};
+$('chkReset').onclick=()=>{S.checks={};save();renderChecks();};
+$('vModel').onchange=()=>{S.vehicle.model=$('vModel').value.trim();save();};
+$('vDesc').onchange=()=>{S.vehicle.desc=$('vDesc').value.trim();save();};
+$('vReg').onchange=()=>{const v=$('vReg').value.toUpperCase().replace(/\s+/g,' ').trim();S.vehicle.reg=v;$('vReg').value=v;save();
+ $('vNote').textContent=v&&!/^([A-Z]{2}\d{2} ?[A-Z]{3}|[A-Z]\d{1,3} ?[A-Z]{3}|[A-Z]{3} ?\d{1,3}[A-Z]|[A-Z]{1,3} ?\d{1,4}|\d{1,4} ?[A-Z]{1,3})$/.test(v)?'That doesn\'t look like a UK registration. Check it.':'';};
+
+/* ---------- shift clock ---------- */
+function clockTotals(c,now){const t={drive:c.drive,work:c.work};t[c.mode]+=now-c.segStart;return t;}
+function nextVisit(c){return c.visits[c.idx]||null;}
+function renderClock(){
+ const c=S.clock;$('clkIdle').hidden=!!c;$('clkRun').hidden=!c;if(!c)return;
+ const now=Date.now(),t=clockTotals(c,now),nv=nextVisit(c);
+ $('clkStats').innerHTML=`<div class="stat"><b>${hm_((now-c.start)/60000)}</b><span>shift so far · started ${new Date(c.start).toTimeString().slice(0,5)}${c.vehicle&&c.vehicle.reg?' · '+esc(c.vehicle.reg):''}</span></div>
+  <div class="stat"><b>${hm_(t.drive/60000)}</b><span>driving${c.mode==='drive'?' · now':''}</span></div>
+  <div class="stat"><b>${hm_(t.work/60000)}</b><span>working${c.mode==='work'?' · now':''}</span></div>
+  <div class="stat"><b style="font-size:20px;white-space:normal">${nv?esc(nv.label):'No more planned visits'}</b><span>${c.mode==='work'&&c.cur!=null?'at visit '+(c.cur+1):'next visit'}</span></div>`;
+ $('clkToggle').textContent=c.mode==='drive'?(nv?'Arrived at '+nv.label:'Arrived (stop driving)'):'Leaving: start driving';
+}
+$('clkStart').onclick=()=>{
+ const now=Date.now(),o=$('odoS').value;
+ S.clock={vehicle:{...S.vehicle},checks:snapChecks(S.checks),start:now,segStart:now,mode:$('clkMode').value,drive:0,work:0,odoStart:o===''?null:+o,cur:null,idx:0,
+  visits:S.stops.map((s,i)=>({id:s.id,label:s.label||'Visit '+(i+1),arr:null,lv:null}))};
+ save();renderClock();status('Shift started.');
+};
+$('clkToggle').onclick=()=>{
+ const c=S.clock;if(!c)return;const now=Date.now();
+ c[c.mode]+=now-c.segStart;c.segStart=now;
+ if(c.mode==='drive'){c.mode='work';const v=nextVisit(c);if(v){v.arr=now;c.cur=c.idx;}}
+ else{c.mode='drive';if(c.cur!=null){c.visits[c.cur].lv=now;c.idx=c.cur+1;c.cur=null;}}
+ save();renderClock();
+};
+$('clkEnd').onclick=()=>{
+ const b=$('clkEnd');if(!b.dataset.c){b.dataset.c=1;b.textContent='Tap again to end';setTimeout(()=>{delete b.dataset.c;b.textContent='End shift';},3000);return;}
+ delete b.dataset.c;b.textContent='End shift';
+ const c=S.clock,now=Date.now();c[c.mode]+=now-c.segStart;if(c.cur!=null)c.visits[c.cur].lv=now;
+ const oe=$('odoE').value,odo=c.odoStart!=null&&oe!==''&&+oe>=c.odoStart?(+oe-c.odoStart)*(S.set.unit==='km'?0.621371:1):null;
+ const planned=route?mi(route.distance):0,paidPlanned=route?mi(paidMeters(route.legs)):0;
+ const miles=odo!=null?odo:planned;
+ const paidMiles=planned>0?paidPlanned*(miles/planned):0;
+ const d=new Date(c.start),iso=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+ S.log.push({id:uid(),date:iso,name:$('shName').value.trim()||'Shift',start:new Date(c.start).toISOString(),end:new Date(now).toISOString(),
+  shiftMin:(now-c.start)/60000,driveMin:c.drive/60000,workMin:c.work/60000,plannedMiles:+planned.toFixed(2),miles:+miles.toFixed(2),paidMiles:+paidMiles.toFixed(2),odo:odo!=null,actual:null,
+  vehicle:c.vehicle,checks:c.checks,
+  visits:c.visits.filter(v=>v.arr).map(v=>({label:v.label,arr:v.arr,lv:v.lv}))});
+ S.clock=null;S.checks={};$('odoS').value='';$('odoE').value='';save();renderChecks();renderAll();status('Shift ended and saved to the logbook.');
+};
+$('clkCancel').onclick=()=>{const b=$('clkCancel');if(!b.dataset.c){b.dataset.c=1;b.textContent='Tap again to discard';setTimeout(()=>{delete b.dataset.c;b.textContent='Discard';},3000);return;}
+ delete b.dataset.c;b.textContent='Discard';S.clock=null;save();renderClock();status('Shift discarded.');};
+setInterval(renderClock,20000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)renderClock();});
+
+/* ---------- PDF import ---------- */
+const PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+let pdfLib=null,found=[];
+function loadPdfJs(){if(!pdfLib&&window.pdfjsLib)pdfLib=window.pdfjsLib;if(pdfLib)return Promise.resolve(pdfLib);return new Promise((res,rej)=>{const s=document.createElement('script');s.src=PDFJS+'pdf.min.js';
+ s.onload=()=>{pdfLib=window.pdfjsLib;pdfLib.GlobalWorkerOptions.workerSrc=PDFJS+'pdf.worker.min.js';res(pdfLib);};s.onerror=()=>rej(new Error('pdf.js failed to load'));document.head.appendChild(s);});}
+async function pdfLines(buf){
+ const lib=await loadPdfJs();const doc=await lib.getDocument({data:buf}).promise;const lines=[];
+ for(let p=1;p<=doc.numPages;p++){
+  const tc=await (await doc.getPage(p)).getTextContent();
+  const items=tc.items.filter(it=>it.str&&it.str.trim()).map(it=>({s:it.str,x:it.transform[4],y:it.transform[5],w:it.width||0}));
+  const rows=[];items.sort((a,b)=>b.y-a.y||a.x-b.x);
+  for(const it of items){let r=rows.find(r=>Math.abs(r.y-it.y)<3);if(!r){r={y:it.y,it:[]};rows.push(r);}r.it.push(it);}
+  rows.sort((a,b)=>b.y-a.y).forEach(r=>{r.it.sort((a,b)=>a.x-b.x);let t='',prev=null;
+   for(const it of r.it){if(prev){const gap=it.x-(prev.x+prev.w);t+=gap>12?' | ':(gap>1||!/\s$/.test(t)?' ':'');}t+=it.s;prev=it;}
+   lines.push(t.replace(/\s+/g,' ').trim());});
+ }
+ return lines;
+}
+const TIME=/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/g;
+const PCg=/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
+function parseVisits(lines){
+ const out=[];
+ lines.forEach((ln,i)=>{
+  const m=ln.match(PCg);if(!m)return;
+  const segs=ln.split(' | ').map(s=>s.trim()).filter(Boolean);
+  let ai=segs.findIndex(s=>PCg.test(s));let addr=segs[ai];
+  const times=(ln.match(TIME)||[]).map(t=>t.replace('.',':'));
+  // address segment only holds the postcode, or the line is one block: widen
+  if(segs.length===1){
+   const s=segs[0].replace(TIME,' ').replace(/\s+-\s+/g,' ').trim();
+   const st=s.search(/\b(Flat|Apartment|Unit)\b|\b\d+[A-Za-z]?\s+[A-Z][a-z]/);
+   addr=st>0?s.slice(st):s;segs[0]=st>0?s.slice(0,st):'';ai=-1;
+  }else if(addr.replace(PCg,'').trim().length<4&&ai>0){addr=segs[ai-1]+', '+addr;segs[ai-1]='';}
+  if(!/\d/.test(addr.replace(PCg,''))&&i>0&&!PCg.test(lines[i-1]))addr=lines[i-1].replace(/ \| /g,', ')+', '+addr;
+  const isTime=s=>!s.replace(TIME,'').replace(/[-–to\s]/g,'');
+  let label=(segs.find((s,k)=>k!==ai&&s&&!isTime(s)&&/[A-Za-z]/.test(s))||'').replace(TIME,'').replace(/^[-–\s]+|[-–\s]+$/g,'');
+  if(!label&&i>0&&!PCg.test(lines[i-1])&&lines[i-1].length<40)label=lines[i-1].replace(TIME,'').replace(/ \| /g,' ').trim();
+  out.push({label,addr:addr.replace(/\s*,\s*,/g,',').trim(),time:times.slice(0,2).join('–'),on:true});
+ });
+ return out;
+}
+function initials(s){const w=s.replace(/\b(Mr|Mrs|Ms|Miss|Dr|Mx)\.?\s+/gi,'').trim().split(/\s+/);
+ if(w.length>=2&&w.length<=4&&w.every(x=>/^[A-Za-z'’.-]+$/.test(x)))return w.map(x=>x[0].toUpperCase()).join('');return s;}
+function renderFound(){
+ $('pdfRows').innerHTML=found.map((f,i)=>`<div style="display:grid;grid-template-columns:30px minmax(0,1fr);gap:6px;border-top:1px solid var(--line);padding:8px 0">
+  <input type="checkbox" data-i="${i}" data-f="on" ${f.on?'checked':''} aria-label="Include" style="width:22px;min-height:22px">
+  <div><input data-i="${i}" data-f="label" value="${esc(f.label)}" placeholder="Label" aria-label="Label">
+  <input data-i="${i}" data-f="addr" value="${esc(f.addr)}" placeholder="Address" aria-label="Address" style="margin-top:4px">
+  ${f.time?`<div class="note">Time on rota: ${esc(f.time)}</div>`:''}</div></div>`).join('');
+}
+$('pdfRows').addEventListener('input',e=>{const t=e.target,i=t.dataset.i;if(i==null)return;found[i][t.dataset.f]=t.type==='checkbox'?t.checked:t.value;});
+$('pdfIn').onchange=async e=>{
+ const f=e.target.files[0];e.target.value='';if(!f)return;
+ status('Reading PDF…');
+ try{
+  const lines=await pdfLines(await f.arrayBuffer());
+  found=parseVisits(lines);
+  if(!lines.length){status('No text found. This PDF may be a scanned image, so type the visits in instead.');return;}
+  if(!found.length){status('No UK postcodes found in this PDF, so no addresses could be picked out.');return;}
+  if($('pdfInit').checked)found.forEach(v=>v.label=initials(v.label));
+  $('pdfNote').textContent=`Found ${found.length} address${found.length>1?'es':''}. Check and correct them, untick any you don't want, then add.`;
+  $('pdfBox').hidden=false;renderFound();status('');
+ }catch(x){status('Couldn\'t read that PDF. Check your internet connection (the PDF reader loads online) or try another file.');}
+};
+$('pdfInit').onchange=()=>{if($('pdfInit').checked){found.forEach(v=>v.label=initials(v.label));renderFound();}};
+$('pdfCancel').onclick=()=>{found=[];$('pdfBox').hidden=true;};
+$('pdfAdd').onclick=async()=>{
+ const pick=found.filter(f=>f.on&&f.addr.trim());if(!pick.length)return;
+ $('pdfBox').hidden=true;if($('pdfReplace').checked)S.stops=[];
+ let k=0;
+ for(const v of pick){k++;status(`Finding address ${k} of ${pick.length}…`);
+  const known=S.places.find(p=>p.addr===v.addr&&p.lat!=null);const g=known||await geocode(v.addr);
+  const s={id:uid(),label:v.label,addr:v.addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null};S.stops.push(s);rememberPlace(s);save();renderStops();}
+ found=[];const bad=S.stops.filter(s=>s.lat==null).length;
+ await recalc();status(bad?`Added. ${bad} address${bad>1?'es':''} not found. Fix or remove them.`:'Visits added from PDF.');
+};
+
+/* ---------- settings ---------- */
+const setIds=['rate','paidMode','hmrc','tax','app','perMonth','start','end'];
+function syncSettings(){setIds.forEach(k=>{$(k).value=(k==='rate'&&!S.set.rate)?'':S.set[k];});['home','office'].forEach(k=>{if(S[k])$(k+'Addr').value=S[k].addr;});}
+setIds.forEach(k=>$(k).addEventListener('change',()=>{const v=$(k).value;S.set[k]=['rate','hmrc','tax','perMonth'].includes(k)?(+v||0):v;save();
+ if(k==='start'||k==='end'){status('');recalc();}else{renderRoute();renderLog();}}));
+$('shDate').value=new Date().toISOString().slice(0,10);
+syncSettings();renderChecks();renderAll();recalc();
+}
+</script>
+</body>
+</html>
