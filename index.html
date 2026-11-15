@@ -166,10 +166,19 @@ a{color:var(--blue2)}
    <label class="btnl pri" tabindex="0">Import visits from a photo, screenshot or PDF<input type="file" id="rotaIn" accept="image/*,application/pdf" multiple hidden></label>
   </div>
   <p class="note">Every address found is listed with its name and time. Untick anyone who isn't on your shift.</p>
+  <div class="row" style="margin-top:6px">
+   <div style="flex:2"><label for="grpSel">Saved groups</label><select id="grpSel"></select></div>
+   <button id="grpLoad" class="pri">Load group</button><button id="grpDel">Delete</button>
+  </div>
+  <div class="row">
+   <div style="flex:2"><label for="grpName">Save the current visits as a group</label><input id="grpName" placeholder="e.g. Monday Horfield run"></div>
+   <button id="grpSave">Save group</button>
+  </div>
   <div id="pdfBox" hidden style="margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:10px">
    <div class="note" id="pdfNote"></div>
    <label class="chk"><input type="checkbox" id="pdfInit" checked> Shorten names to initials</label>
    <label class="chk"><input type="checkbox" id="pdfReplace"> Replace my current visits</label>
+   <label for="pdfGroup">Also save the ticked visits as a group (optional)</label><input id="pdfGroup" placeholder="Group name, e.g. Monday Horfield run">
    <div id="pdfRows"></div>
    <div class="row" style="margin-top:8px"><button id="pdfAdd" class="pri">Add ticked visits</button><button id="pdfCancel">Cancel</button></div>
   </div>
@@ -234,9 +243,9 @@ a{color:var(--blue2)}
 <script>
 {
 const KEY='shiftMileagePlanner.v1';
-const def={home:null,office:null,stops:[],places:[],log:[],clock:null,vehicle:{model:'',desc:'',reg:''},checks:{},colleagues:[],waits:[],alertsOn:false,fired:{},checkPhotos:{},set:{rate:0,paidMode:'between',hmrc:0.45,tax:0.2,app:'google',start:'home',end:'home',unit:'mi',perMonth:16,buffer:5,pickMin:3,traffic:20,defDur:30,lead:5}};
+const def={home:null,office:null,stops:[],places:[],log:[],clock:null,vehicle:{model:'',desc:'',reg:''},checks:{},groups:[],colleagues:[],waits:[],alertsOn:false,fired:{},checkPhotos:{},set:{rate:0,paidMode:'between',hmrc:0.45,tax:0.2,app:'google',start:'home',end:'home',unit:'mi',perMonth:16,buffer:5,pickMin:3,traffic:20,defDur:30,lead:5}};
 let S;
-function load(j){const s=Object.assign({},def,j||{});s.set=Object.assign({},def.set,(j&&j.set)||{});s.vehicle=Object.assign({},def.vehicle,(j&&j.vehicle)||{});s.checks=Object.assign({},(j&&j.checks)||{});['colleagues','waits'].forEach(k=>{if(!Array.isArray(s[k]))s[k]=[];});s.fired=s.fired||{};const old=Date.now()-3*864e5;Object.keys(s.fired).forEach(k=>{if(s.fired[k]<old)delete s.fired[k];});if(s.vehicle.type){if(s.vehicle.type!=='car'&&s.vehicle.type!=='van')s.set.hmrc=0.45;delete s.vehicle.type;}
+function load(j){const s=Object.assign({},def,j||{});s.set=Object.assign({},def.set,(j&&j.set)||{});s.vehicle=Object.assign({},def.vehicle,(j&&j.vehicle)||{});s.checks=Object.assign({},(j&&j.checks)||{});['colleagues','waits','groups'].forEach(k=>{if(!Array.isArray(s[k]))s[k]=[];});s.fired=s.fired||{};const old=Date.now()-3*864e5;Object.keys(s.fired).forEach(k=>{if(s.fired[k]<old)delete s.fired[k];});if(s.vehicle.type){if(s.vehicle.type!=='car'&&s.vehicle.type!=='van')s.set.hmrc=0.45;delete s.vehicle.type;}
  if(s.base&&!s.home){s.home=s.base;}delete s.base;if('round' in s.set){if(!s.set.round)s.set.end='last';delete s.set.round;}return s;}
 try{S=load(JSON.parse(localStorage.getItem(KEY)||'{}'));}catch(e){S=load({});}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}};
@@ -362,7 +371,7 @@ function renderStops(){
   ${s.lat==null?'<div class="warn">Address not found. Remove it and try a postcode.</div>':''}
   ${s.how==='postcode centre'?'<div class="warn">Postcode centre only. Drag the pin if it\'s wrong.</div>':''}
   ${fl?`<div class="from">${fl}</div>`:''}
-  <div class="vt"><label>From <input type="time" data-f="time" data-i="${i}" value="${esc(s.time||'')}"></label><label>To <input type="time" data-f="end" data-i="${i}" value="${s.time?fmtT(toMin(s.time)+(+s.dur||+S.set.defDur)).slice(0,5):''}" ${s.time?'':'disabled'}></label><span class="note" style="align-self:center">${s.time?(s.dur||S.set.defDur)+' min'+(s.dur?'':' (default)'):''}</span>
+  <div class="vt"><label>From <input type="time" data-f="time" data-i="${i}" value="${esc(s.time||'')}"></label><label>To <input type="time" data-f="end" data-i="${i}" value="${s.time?fmtT(toMin(s.time)+(+s.dur||+S.set.defDur)).slice(0,5):''}" ${s.time?'':'disabled'}></label><span class="note vmin" style="align-self:center">${s.time?(s.dur||S.set.defDur)+' min'+(s.dur?'':' (default)'):''}</span>
   ${i>0?`<label>Wait before <select data-f="waitAt" data-i="${i}"><option value="">In the car</option>${S.waits.map(w=>`<option value="${w.id}" ${s.waitAt===w.id?'selected':''}>${esc(w.label)}</option>`).join('')}</select></label>`:''}</div></div>
   <div class="acts"><button data-a="up" data-i="${i}" aria-label="Move up" ${i?'':'disabled'}>↑</button><button data-a="dn" data-i="${i}" aria-label="Move down" ${i<S.stops.length-1?'':'disabled'}>↓</button><button data-a="sw" data-i="${i}" aria-label="Swap">⇄</button><button data-a="rm" data-i="${i}" aria-label="Remove">✕</button></div></li>`;}).join('')
   || '<li style="display:block;color:var(--mute)">No visits yet. Add them above.</li>';
@@ -491,7 +500,14 @@ $('stops').addEventListener('click',e=>{
  save();recalc();
 });
 $('stops').addEventListener('change',e=>{const t=e.target,f=t.dataset.f;if(!f)return;const s=S.stops[+t.dataset.i];if(!s)return;
- const v=t.value;if(f==='end'){if(v&&s.time)s.dur=((toMin(v)-toMin(s.time))+1440)%1440||null;}else s[f]=v||null;save();if(f==='waitAt')recalc();else{renderStops();renderSchedule();}});
+ const v=t.value;if(f==='end'){if(v&&s.time)s.dur=((toMin(v)-toMin(s.time))+1440)%1440||null;}else s[f]=v||null;save();
+ if(f==='waitAt'){recalc();return;}
+ /* update only this visit's row so the box you're typing in keeps focus */
+ const row=t.closest('li'),endI=row&&row.querySelector('input[data-f=end]'),mins=row&&row.querySelector('.vmin');
+ const d=s.dur||+S.set.defDur;
+ if(endI&&f!=='end'){endI.disabled=!s.time;endI.value=s.time?fmtT(toMin(s.time)+d).slice(0,5):'';}
+ if(mins)mins.textContent=s.time?d+' min'+(s.dur?'':' (default)'):'';
+ renderSchedule();});
 $('revBtn').onclick=()=>{S.stops.reverse();save();recalc();};
 $('clrBtn').onclick=()=>{if(!S.stops.length)return;const b=$('clrBtn');if(b.dataset.c){S.stops=[];delete b.dataset.c;b.textContent='Clear all';save();recalc();}
  else{b.dataset.c=1;b.textContent='Tap again to clear';setTimeout(()=>{delete b.dataset.c;b.textContent='Clear all';},3000);}};
@@ -533,7 +549,7 @@ $('csvBtn').onclick=()=>{const h='Date,Shift,Start,End,Shift mins,Driving mins,W
   const tt=x=>x?new Date(x).toTimeString().slice(0,5):'',mm=x=>x==null?'':Math.round(x);return [r.date,'"'+String(r.name).replace(/"/g,'""')+'"',tt(r.start),tt(r.end),mm(r.shiftMin),mm(r.driveMin),mm(r.workMin),r.miles.toFixed(1),r.paidMiles.toFixed(1),paid.toFixed(2),m.hm.toFixed(2),m.gap.toFixed(2),'"'+(r.vehicle&&r.vehicle.model||'')+'"',r.vehicle?r.vehicle.reg||'':'','"'+(r.vehicle&&r.vehicle.desc||'')+'"','"'+checkText(r.checks)+'"'].join(',');}).join('\n');
  download('mileage-log.csv','text/csv',h+rows);};
 $('bakBtn').onclick=async()=>{let photos=[];try{photos=await pAll();}catch(e){}download('mileage-planner-backup.json','application/json',JSON.stringify({...S,photoData:photos}));status('Backup saved'+(photos.length?` with ${photos.length} photo${photos.length>1?'s':''}`:'')+'.');};
-$('bakIn').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const j=JSON.parse(await f.text());const ph=j.photoData||[];delete j.photoData;S=load(j);for(const p of ph){try{await pPut(p);}catch(x){}}save();status('Backup restored.');syncSettings();renderChecks();recalc();}catch(x){status('That file isn\'t a valid backup.');}e.target.value='';};
+$('bakIn').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const j=JSON.parse(await f.text());const ph=j.photoData||[];delete j.photoData;S=load(j);for(const p of ph){try{await pPut(p);}catch(x){}}save();status('Backup restored.');syncSettings();renderChecks();renderGroups();recalc();}catch(x){status('That file isn\'t a valid backup.');}e.target.value='';};
 $('unitBtn').onclick=()=>{S.set.unit=S.set.unit==='km'?'mi':'km';save();renderAll();};
 
 /* ---------- vehicle and checks ---------- */
@@ -690,12 +706,12 @@ $('pdfCancel').onclick=()=>{found=[];$('pdfBox').hidden=true;stepUI();};
 $('pdfAdd').onclick=async()=>{
  const pick=found.filter(f=>f.on&&f.addr.trim());if(!pick.length)return;
  $('pdfBox').hidden=true;if($('pdfReplace').checked)S.stops=[];
- let k=0;
+ let k=0;const added=[];
  for(const v of pick){k++;status(`Finding address ${k} of ${pick.length}…`);
   const known=S.places.find(p=>p.addr===v.addr&&p.lat!=null);const g=known||await geocode(v.addr);
-  const tm=(v.time||'').split('–').map(normT),s={id:uid(),label:v.label,addr:v.addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null,time:tm[0]||null,dur:v.dur||(tm[0]&&tm[1]?((toMin(tm[1])-toMin(tm[0])+1440)%1440)||null:null)};S.stops.push(s);rememberPlace(s);save();renderStops();}
- found=[];stepUI();if(S.stops.every(s=>s.time))S.stops.sort((a,b)=>a.time.localeCompare(b.time));const bad=S.stops.filter(s=>s.lat==null).length;
- await recalc();status(bad?`Added. ${bad} address${bad>1?'es':''} couldn't be found on the map. Fix or remove them.`:'Visits added and numbered in time order.');
+  const tm=(v.time||'').split('–').map(normT),s={id:uid(),label:v.label,addr:v.addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null,time:tm[0]||null,dur:v.dur||(tm[0]&&tm[1]?((toMin(tm[1])-toMin(tm[0])+1440)%1440)||null:null)};S.stops.push(s);added.push(s);rememberPlace(s);save();renderStops();}
+ found=[];stepUI();const gn=$('pdfGroup').value.trim();if(gn){saveGroup(gn,added);$('pdfGroup').value='';}if(S.stops.every(s=>s.time))S.stops.sort((a,b)=>a.time.localeCompare(b.time));const bad=S.stops.filter(s=>s.lat==null).length;
+ await recalc();status((bad?`Added. ${bad} address${bad>1?'es':''} couldn't be found on the map. Fix or remove them.`:'Visits added and numbered in time order.')+(gn?` Saved as group "${gn}".`:''));
 };
 
 /* ---------- two-part rota: 1) names with time ranges, 2) address list ---------- */
@@ -977,13 +993,45 @@ $('rotaIn').onchange=async e=>{
  }catch(x){status('Couldn\'t read that file. Check your internet connection (the reader loads online) and try again.');}
 };
 document.querySelectorAll('.btnl').forEach(l=>l.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();l.querySelector('input').click();}}));
+/* ---------- saved groups of visits ---------- */
+const gStop=s=>({label:s.label,addr:s.addr,lat:s.lat,lng:s.lng,how:s.how,time:s.time||null,dur:s.dur||null,waitAt:s.waitAt||null});
+function saveGroup(name,stops){
+ const g={id:uid(),name,stops:stops.map(gStop)},i=S.groups.findIndex(x=>x.name.toLowerCase()===name.toLowerCase());
+ if(i>=0){g.id=S.groups[i].id;S.groups[i]=g;}else S.groups.push(g);
+ S.groups.sort((a,b)=>a.name.localeCompare(b.name));save();renderGroups(g.id);
+}
+function renderGroups(sel){
+ const cur=sel||$('grpSel').value;
+ $('grpSel').innerHTML=S.groups.length?S.groups.map(g=>`<option value="${g.id}" ${g.id===cur?'selected':''}>${esc(g.name)} (${g.stops.length} visit${g.stops.length>1?'s':''})</option>`).join(''):'<option value="">No groups saved yet</option>';
+ $('grpLoad').disabled=$('grpDel').disabled=!S.groups.length;
+}
+$('grpSave').onclick=()=>{
+ const n=$('grpName').value.trim();if(!n){status('Type a name for the group first.');$('grpName').focus();return;}
+ if(!S.stops.length){status('Add some visits first, then save them as a group.');return;}
+ const over=S.groups.some(g=>g.name.toLowerCase()===n.toLowerCase());
+ saveGroup(n,S.stops);$('grpName').value='';status(`${over?'Updated':'Saved'} group "${n}" with ${S.stops.length} visit${S.stops.length>1?'s':''}.`);
+};
+$('grpLoad').onclick=async()=>{
+ const g=S.groups.find(x=>x.id===$('grpSel').value);if(!g)return;
+ S.stops=g.stops.map(s=>({...s,id:uid(),waitAt:s.waitAt&&S.waits.some(w=>w.id===s.waitAt)?s.waitAt:null}));
+ const miss=S.stops.filter(s=>s.lat==null);
+ for(const s of miss){status('Finding address…');const r=await geocode(s.addr);if(r){Object.assign(s,{lat:r.lat,lng:r.lng,how:r.how});}}
+ if(S.stops.every(s=>s.time))S.stops.sort((a,b)=>a.time.localeCompare(b.time));
+ save();await recalc();status(`Loaded "${g.name}": ${S.stops.length} visit${S.stops.length>1?'s':''}. Change any times for today if needed.`);
+};
+$('grpDel').onclick=()=>{
+ const b=$('grpDel'),g=S.groups.find(x=>x.id===$('grpSel').value);if(!g)return;
+ if(!b.dataset.c){b.dataset.c=1;b.textContent='Tap again to delete';setTimeout(()=>{delete b.dataset.c;b.textContent='Delete';},3000);return;}
+ delete b.dataset.c;b.textContent='Delete';S.groups=S.groups.filter(x=>x!==g);save();renderGroups();status(`Deleted group "${g.name}".`);
+};
+
 /* ---------- settings ---------- */
 const setIds=['rate','paidMode','hmrc','tax','app','perMonth','start','end','buffer','pickMin','traffic','defDur','lead'];
 function syncSettings(){setIds.forEach(k=>{$(k).value=(k==='rate'&&!S.set.rate)?'':S.set[k];});['home','office'].forEach(k=>{if(S[k])$(k+'Addr').value=S[k].addr;});}
 setIds.forEach(k=>$(k).addEventListener('change',()=>{const v=$(k).value;S.set[k]=['rate','hmrc','tax','perMonth','buffer','pickMin','traffic','defDur','lead'].includes(k)?(+v||0):v;save();renderSchedule();
  if(k==='start'||k==='end'){status('');recalc();}else{renderRoute();renderLog();}}));
 $('shDate').value=new Date().toISOString().slice(0,10);$('shDate').addEventListener('change',renderSchedule);
-syncSettings();renderChecks();renderAll();recalc();
+syncSettings();renderChecks();renderGroups();renderAll();recalc();
 }
 </script>
 </body>
