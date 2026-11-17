@@ -75,6 +75,13 @@ a{color:var(--blue2)}
 .mk.c{background:#7b3fa0;color:#fff;border-color:#fff}.mk.w{background:#4a5560;color:#fff;border-color:#fff}
 .btnl{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 14px;border-radius:7px;border:1px solid var(--blue2);color:var(--blue2);font-weight:600;cursor:pointer;margin:0;font-size:16px}
 .btnl.pri{background:var(--blue);border-color:var(--blue);color:#fff}.btnl[aria-disabled=true]{opacity:.45;pointer-events:none}
+.sug{min-height:32px;padding:2px 8px;font-size:13px;margin:2px}
+:root{--yel2:light-dark(#8a6d00,#f7c600)}
+a.nav{display:block;color:inherit;text-decoration:none;border-radius:6px;padding:2px 4px;margin:-2px -4px}
+a.nav .lbl,a.nav .addr{display:block}a.nav b{color:var(--blue2);font-size:13px;white-space:nowrap}
+a.nav:hover,a.nav:focus-visible{background:color-mix(in srgb,var(--blue2) 12%,transparent)}
+@media(max-width:600px){#stops .acts{flex-wrap:wrap;max-width:92px;justify-content:flex-end}}
+.num.cv{background:#7b3fa0;color:#fff}
 .plist{list-style:none;margin:8px 0 0;padding:0}
 .plist li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
 .pd{display:flex;flex-direction:column;gap:2px}.pd label{margin:0;font-size:13px;color:var(--ink);display:flex;align-items:center;gap:4px;white-space:nowrap}
@@ -121,7 +128,8 @@ a{color:var(--blue2)}
  </div>
  <div id="clkRun" hidden>
   <div class="big" id="clkStats"></div>
-  <div class="row"><button id="clkToggle" class="pri" style="flex:2"></button></div>
+  <div class="row"><button id="clkToggle" class="pri" style="flex:2"></button><button id="clkNav" style="flex:2"></button></div>
+  <label class="chk"><input type="checkbox" id="autoNav"> Open my map app automatically when I start driving</label>
   <div class="row" style="margin-top:8px">
    <div><label for="odoE">Odometer at end (optional)</label><input id="odoE" type="number" min="0" step="1" inputmode="numeric"></div>
    <button id="clkEnd">End shift</button><button id="clkCancel">Discard</button>
@@ -186,7 +194,7 @@ a{color:var(--blue2)}
   <div class="row" style="margin-top:10px"><button id="optBtn">Optimise order</button><button id="revBtn">Reverse</button><button id="clrBtn">Clear all</button></div>
   <div id="status" role="status"></div>
   <ol id="stops"></ol>
-  <p class="note">Tap ⇄ on one visit, then ⇄ on another, to swap them. Drag a pin on the map to fix a wrong location.</p>
+  <p class="note">Tap a name or address to start navigation. ＋ adds another visit at the same address. Tap ⇄ on one visit, then ⇄ on another, to swap them. Drag a pin on the map to fix a wrong location.</p>
  </section>
  <section>
   <div id="map"></div>
@@ -196,6 +204,8 @@ a{color:var(--blue2)}
    <div class="scroll"><table id="tl"></table></div>
    <div class="row" style="margin-top:10px"><button id="alertBtn" class="pri">Turn on alerts</button><button id="wakeBtn">Keep screen on</button><button id="icsBtn">Add leave times to my calendar</button></div>
    <p class="note" id="alertNote"></p>
+   <div class="row"><button id="ttNow">Check traffic for my next visit</button><button id="ttRoute">Update timeline with predicted traffic</button></div>
+   <p class="note" id="ttOut" aria-live="polite"></p>
   </div>
   <div class="card" style="margin-top:16px">
    <h2>This route</h2>
@@ -232,6 +242,7 @@ a{color:var(--blue2)}
   <div><label for="pickMin">Time at each pick-up / drop-off (min)</label><input id="pickMin" type="number" min="0" step="1" inputmode="numeric"></div>
   <div><label for="traffic">Traffic allowance (% added to drive times)</label><input id="traffic" type="number" min="0" step="5" inputmode="numeric"></div>
   <div><label for="defDur">Default visit length (min)</label><input id="defDur" type="number" min="1" step="5" inputmode="numeric"></div>
+  <div style="flex-basis:100%"><label for="ttKey">TomTom key for live traffic (optional, free, stays on this device)</label><div class="row"><input id="ttKey" placeholder="Paste your key" autocomplete="off" style="flex:3"><button id="ttTest">Save and test</button></div><div class="note" id="ttKeyOut">Get a free key at <a href="https://developer.tomtom.com/user/register" target="_blank" rel="noopener">developer.tomtom.com</a> (free plan: 2,500 checks a day).</div></div>
   <div><label for="lead">Alert before leave time (min)</label><input id="lead" type="number" min="1" step="1" inputmode="numeric"></div>
   <div><label for="app">Map app for navigation</label><select id="app"><option value="google">Google Maps</option><option value="apple">Apple Maps</option><option value="waze">Waze</option></select></div>
  </div>
@@ -244,7 +255,7 @@ a{color:var(--blue2)}
 <script>
 {
 const KEY='shiftMileagePlanner.v1';
-const def={home:null,office:null,stops:[],places:[],log:[],clock:null,vehicle:{model:'',desc:'',reg:''},checks:{},groups:[],colleagues:[],waits:[],alertsOn:false,fired:{},checkPhotos:{},set:{rate:0,paidMode:'between',hmrc:0.45,tax:0.2,app:'google',start:'home',end:'home',unit:'mi',perMonth:16,buffer:5,pickMin:3,traffic:20,defDur:30,lead:5}};
+const def={home:null,office:null,stops:[],places:[],log:[],clock:null,vehicle:{model:'',desc:'',reg:''},checks:{},groups:[],colleagues:[],waits:[],alertsOn:false,fired:{},checkPhotos:{},tLegs:{},set:{rate:0,paidMode:'between',hmrc:0.45,tax:0.2,app:'google',start:'home',end:'home',unit:'mi',perMonth:16,buffer:5,pickMin:3,traffic:20,defDur:30,lead:5}};
 let S;
 function load(j){const s=Object.assign({},def,j||{});s.set=Object.assign({},def.set,(j&&j.set)||{});s.vehicle=Object.assign({},def.vehicle,(j&&j.vehicle)||{});s.checks=Object.assign({},(j&&j.checks)||{});['colleagues','waits','groups'].forEach(k=>{if(!Array.isArray(s[k]))s[k]=[];});s.fired=s.fired||{};const old=Date.now()-3*864e5;Object.keys(s.fired).forEach(k=>{if(s.fired[k]<old)delete s.fired[k];});if(s.vehicle.type){if(s.vehicle.type!=='car'&&s.vehicle.type!=='van')s.set.hmrc=0.45;delete s.vehicle.type;}
  if(s.base&&!s.home){s.home=s.base;}delete s.base;if('round' in s.set){if(!s.set.round)s.set.end='last';delete s.set.round;}return s;}
@@ -328,21 +339,28 @@ const endPt=()=>endFixed()?(S[S.set.end]||null):null;
 const picks=()=>S.colleagues.filter(c=>c.pick&&c.lat!=null);
 const drops=()=>{const d=S.colleagues.filter(c=>c.drop&&c.lat!=null),o=S.dropOrder||[];return d.sort((a,b)=>{const x=o.indexOf(a.id),y=o.indexOf(b.id);return (x<0?1e9:x)-(y<0?1e9:y);});};
 const vName=s=>s.label||'Visit '+(S.stops.indexOf(s)+1);
+const isColl=s=>s.type==='SC'&&s.who&&s.who!=='me';
+/* sort by appointment time; at the same time, the colleague's drop-off comes first */
+const byTime=(a,b)=>(a.time||'99').localeCompare(b.time||'99')||(isColl(b)-isColl(a));
 /* every point the car goes to, in order: start, pick-ups, visits (with optional waiting place before), finish */
 function nodes(){
  const st=startPt();if(!st)return null;
  const out=[{k:'start',p:st,n:NAMES[S.set.start]}];
  picks().forEach(c=>out.push({k:'pick',p:c,n:'Pick up '+c.label}));
+ let pend=[];
+ const collect=()=>{pend.forEach(x=>out.push({k:'collect',p:x.s,n:'Collect '+x.cn+' from '+vName(x.s),s:x.s,cn:x.cn}));pend=[];};
  pts().forEach((s,i)=>{
   if(i>0&&s.waitAt){const w=S.waits.find(w=>w.id===s.waitAt&&w.lat!=null);if(w)out.push({k:'wait',p:w,n:w.label});}
-  out.push({k:'visit',p:s,n:vName(s),s});});
+  if(isColl(s)){const c=S.colleagues.find(c=>c.id===s.who),cn=c?c.label:'colleague';out.push({k:'cdrop',p:s,n:'Drop '+cn+' at '+vName(s),s,cn});pend.push({s,cn});}
+  else{out.push({k:'visit',p:s,n:vName(s),s});collect();}});
+ collect();
  drops().forEach(c=>out.push({k:'drop',p:c,n:'Drop off '+c.label}));
  if(endFixed()){const e=endPt();if(!e)return null;out.push({k:'end',p:e,n:NAMES[S.set.end]});}
  return out;
 }
 function seq(){const n=nodes();return n?n.map(x=>x.p):[null];}
 function legPaid(i){
- const N=nodes()||[];const vi=N.map((x,j)=>x.k==='visit'?j:-1).filter(j=>j>=0);if(!vi.length)return false;
+ const N=nodes()||[];const vi=N.map((x,j)=>['visit','cdrop','collect'].includes(x.k)?j:-1).filter(j=>j>=0);if(!vi.length)return false;
  const fv=vi[0],lv=vi[vi.length-1],mode=S.set.paidMode;
  if(mode==='all')return true;
  if(mode==='between')return i>=fv&&i+1<=lv;
@@ -360,7 +378,7 @@ function missing(){
 }
 
 /* ---------- rendering ---------- */
-function infoLine(k){const p=S[k];return p?`${esc(p.addr)}${p.how==='postcode centre'?' <span class="warn">(postcode centre only. Drag the pin if needed)</span>':''}`:'';}
+function infoLine(k){const p=S[k];return p?`${esc(p.addr)}${p.warn?' <span class="warn">⚠ '+esc(p.warn)+'</span>':''}${p.how==='postcode centre'?' <span class="warn">(postcode centre only. Drag the pin if needed)</span>':''}`:'';}
 function renderStops(){
  $('homeInfo').innerHTML=infoLine('home');$('officeInfo').innerHTML=infoLine('office');
  const need=missing();
@@ -369,14 +387,16 @@ function renderStops(){
   const fr=fromPts[s.id]||{};
   const fl=['home','office'].filter(k=>fr[k]!=null).map(k=>`${dm(fr[k])} from ${NAMES[k].toLowerCase()}`).join(' · ');
   return `<li class="${swapSel===s.id?'sel':''}">
-  <span class="num">${i+1}</span>
-  <div><div class="lbl">${esc(s.label||'Visit '+(i+1))}</div><div class="addr">${esc(s.addr)}</div>
-  ${s.lat==null?'<div class="warn">Address not found. Remove it and try a postcode.</div>':''}
+  <span class="num${isColl(s)?' cv':''}" title="${isColl(s)?'Colleague\'s call':''}">${i+1}</span>
+  <div><a class="nav" href="${esc(navLink(s))}" target="_blank" rel="noopener" title="Navigate here"><span class="lbl">${esc(s.label||'Visit '+(i+1))}</span><span class="addr">${esc(s.addr)} <b>➤ Navigate</b></span></a>
+  ${s.lat==null?'<div class="warn">Address not found. Remove it and try a postcode.</div>':''}${warnLine(s)}
   ${s.how==='postcode centre'?'<div class="warn">Postcode centre only. Drag the pin if it\'s wrong.</div>':''}
   ${fl?`<div class="from">${fl}</div>`:''}
   <div class="vt"><label>From <input type="time" data-f="time" data-i="${i}" value="${esc(s.time||'')}"></label><label>To <input type="time" data-f="end" data-i="${i}" value="${s.time?fmtT(toMin(s.time)+(+s.dur||+S.set.defDur)).slice(0,5):''}" ${s.time?'':'disabled'}></label><span class="note vmin" style="align-self:center">${s.time?(s.dur||S.set.defDur)+' min'+(s.dur?'':' (default)'):''}</span>
+  <label>Call <select data-f="type" data-i="${i}"><option value="">—</option><option value="DU" ${s.type==='DU'?'selected':''}>DU (double-up)</option><option value="SC" ${s.type==='SC'?'selected':''}>SC (single)</option></select></label>
+  ${s.type==='SC'?`<label>Done by <select data-f="who" data-i="${i}"><option value="me">Me</option>${S.colleagues.map(c=>`<option value="${c.id}" ${s.who===c.id?'selected':''}>${esc(c.label)} (I drop them off)</option>`).join('')}</select></label>`:''}
   ${i>0?`<label>Wait before <select data-f="waitAt" data-i="${i}"><option value="">In the car</option>${S.waits.map(w=>`<option value="${w.id}" ${s.waitAt===w.id?'selected':''}>${esc(w.label)}</option>`).join('')}</select></label>`:''}</div></div>
-  <div class="acts"><button data-a="up" data-i="${i}" aria-label="Move up" ${i?'':'disabled'}>↑</button><button data-a="dn" data-i="${i}" aria-label="Move down" ${i<S.stops.length-1?'':'disabled'}>↓</button><button data-a="sw" data-i="${i}" aria-label="Swap">⇄</button><button data-a="rm" data-i="${i}" aria-label="Remove">✕</button></div></li>`;}).join('')
+  <div class="acts"><button data-a="up" data-i="${i}" aria-label="Move up" ${i?'':'disabled'}>↑</button><button data-a="dn" data-i="${i}" aria-label="Move down" ${i<S.stops.length-1?'':'disabled'}>↓</button><button data-a="sw" data-i="${i}" aria-label="Swap">⇄</button><button data-a="dup" data-i="${i}" aria-label="Add another visit at this address" title="Another visit here">＋</button><button data-a="rm" data-i="${i}" aria-label="Remove">✕</button></div></li>`;}).join('')
   || '<li style="display:block;color:var(--mute)">No visits yet. Add them above.</li>';
  $('places').innerHTML=S.places.map(p=>`<option value="${esc(p.label)}">${esc(p.addr)}</option>`).join('');
 }
@@ -385,17 +405,21 @@ function renderMap(){
  if(!map)return; layer.clearLayers(); const ll=[];
  ['home','office'].forEach(k=>{const b=S[k];if(!b)return;
   const m=L.marker([b.lat,b.lng],{icon:icon(k==='home'?'H':'O','h'),draggable:true}).addTo(layer).bindTooltip(NAMES[k]);
-  m.on('dragend',e=>{const p=e.target.getLatLng();b.lat=p.lat;b.lng=p.lng;b.how='pin';save();recalc();});ll.push([b.lat,b.lng]);});
+  m.on('dragend',e=>{const p=e.target.getLatLng();b.lat=p.lat;b.lng=p.lng;b.how='pin';delete b.warn;save();recalc();});ll.push([b.lat,b.lng]);});
  [['colleagues','c'],['waits','w']].forEach(([k,c])=>S[k].forEach(p=>{if(p.lat==null||(k==='colleagues'&&!p.pick&&!p.drop))return;
   const m=L.marker([p.lat,p.lng],{icon:icon(k==='colleagues'?(p.pick&&p.drop?'C':p.pick?'P':'D'):'W',c),draggable:true}).addTo(layer).bindTooltip(esc((k==='colleagues'?[p.pick?'Pick up':'',p.drop?'Drop off':''].filter(Boolean).join(' & ')+' ':'Wait: ')+p.label));
-  m.on('dragend',e=>{const q=e.target.getLatLng();p.lat=q.lat;p.lng=q.lng;p.how='pin';save();recalc();});ll.push([p.lat,p.lng]);}));
+  m.on('dragend',e=>{const q=e.target.getLatLng();p.lat=q.lat;p.lng=q.lng;p.how='pin';delete p.warn;save();recalc();});ll.push([p.lat,p.lng]);}));
  S.stops.forEach((s,i)=>{if(s.lat==null)return;
   const m=L.marker([s.lat,s.lng],{icon:icon(i+1),draggable:true}).addTo(layer).bindTooltip(esc(s.label||'Visit '+(i+1)));
-  m.on('dragend',e=>{const p=e.target.getLatLng();s.lat=p.lat;s.lng=p.lng;s.how='pin';rememberPlace(s);save();recalc();});ll.push([s.lat,s.lng]);});
+  m.on('dragend',e=>{const p=e.target.getLatLng();s.lat=p.lat;s.lng=p.lng;s.how='pin';delete s.warn;rememberPlace(s);save();recalc();});ll.push([s.lat,s.lng]);});
  if(route) L.geoJSON(route.geometry,{style:{color:'#0b4f9c',weight:5,opacity:.85}}).addTo(layer);
  if(ll.length>1) map.fitBounds(ll,{padding:[30,30]}); else if(ll.length) map.setView(ll[0],14);
 }
 function navLink(p){
+ if(p.lat==null){const q=encodeURIComponent(p.addr||'');
+  if(S.set.app==='apple')return 'https://maps.apple.com/?daddr='+q+'&dirflg=d';
+  if(S.set.app==='waze')return 'https://waze.com/ul?q='+q+'&navigate=yes';
+  return 'https://www.google.com/maps/dir/?api=1&destination='+q+'&travelmode=driving';}
  const ll=p.lat.toFixed(6)+','+p.lng.toFixed(6);
  if(S.set.app==='apple')return 'https://maps.apple.com/?daddr='+ll+'&dirflg=d';
  if(S.set.app==='waze')return 'https://waze.com/ul?ll='+ll+'&navigate=yes';
@@ -424,7 +448,7 @@ function renderRoute(){
  const N=nodes()||[],sq=N.map(x=>x.p),n=route.legs.length;
  $('legs').innerHTML=`<thead><tr><th>From</th><th>To</th><th class="n">${U()==='km'?'Km':'Miles'}</th><th class="n">Mins</th><th>Paid?</th><th></th></tr></thead><tbody>`+
   route.legs.map((l,i)=>{const a=sq[i],b=sq[i+1];if(!a||!b)return '';
-   return `<tr><td data-l="From">${esc(N[i].n.replace(/^(Pick up|Drop off) /,''))}</td><td data-l="To">${esc(N[i+1].n)}</td><td class="n" data-l="Distance">${dm(l.distance)}</td><td class="n" data-l="Mins">${Math.round(l.duration/60)}</td><td data-l="Paid?">${legPaid(i,n)?'Yes':'No'}</td><td data-l="Go"><a href="${esc(navLink(b))}" target="_blank" rel="noopener">Navigate</a></td></tr>`;}).join('')+'</tbody>';
+   return `<tr><td data-l="From">${esc(N[i].k==='cdrop'||N[i].k==='collect'?vName(N[i].s):N[i].n.replace(/^(Pick up|Drop off) /,''))}</td><td data-l="To">${esc(N[i+1].n)}</td><td class="n" data-l="Distance">${dm(l.distance)}</td><td class="n" data-l="Mins">${Math.round(l.duration/60)}</td><td data-l="Paid?">${legPaid(i,n)?'Yes':'No'}</td><td data-l="Go"><a href="${esc(navLink(b))}" target="_blank" rel="noopener">Navigate</a></td></tr>`;}).join('')+'</tbody>';
  $('nav').innerHTML=fullRouteLinks(sq);
 }
 const hm_=min=>{if(min==null||isNaN(min))return '—';min=Math.round(min);return Math.floor(min/60)+'h '+String(min%60).padStart(2,'0')+'m';};
@@ -479,7 +503,7 @@ async function recalc(){
 function rememberPlace(s){if(!s.label||s.lat==null)return;const i=S.places.findIndex(p=>p.label.toLowerCase()===s.label.toLowerCase());const rec={label:s.label,addr:s.addr,lat:s.lat,lng:s.lng,how:s.how};if(i>=0)S.places[i]=rec;else S.places.push(rec);}
 async function setBase(k){const q=$(k+'Addr').value.trim();if(!q)return;status('Finding '+NAMES[k].toLowerCase()+' address…');
  const g=await geocode(q);if(!g){status(NAMES[k]+' address not found. Try adding the postcode.');return;}
- S[k]={addr:q,...g};save();status('');recalc();}
+ S[k]={addr:q,...g};await verifyPlace(S[k]);save();status(S[k].warn?'Check the '+NAMES[k].toLowerCase()+' address: '+S[k].warn:'');recalc();}
 ['home','office'].forEach(k=>{$(k+'Set').onclick=()=>setBase(k);$(k+'Addr').addEventListener('keydown',e=>{if(e.key==='Enter')setBase(k);});});
 $('stopLabel').addEventListener('change',()=>{const p=S.places.find(p=>p.label.toLowerCase()===$('stopLabel').value.trim().toLowerCase());if(p)$('stopAddr').value=p.addr;});
 async function addStop(){
@@ -487,9 +511,9 @@ async function addStop(){
  const known=S.places.find(p=>p.addr===addr&&p.lat!=null);
  let g=known?{lat:known.lat,lng:known.lng,how:known.how}:null;
  if(!g){status('Finding address…');$('addStop').disabled=true;g=await geocode(addr);$('addStop').disabled=false;}
- const s={id:uid(),label,addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null};
- S.stops.push(s);rememberPlace(s);save();$('stopAddr').value='';$('stopLabel').value='';
- status(g?'':'Address not found.');await recalc();
+ const s={id:uid(),label,addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null};await verifyPlace(s);
+ S.stops.push(s);rememberPlace(s);save();$('stopAddr').value='';$('stopLabel').value='';$('chk-stopAddr').innerHTML='';
+ await recalc();status(!g?'Address not found.':s.warn?'Added, but check it: '+s.warn:'');
 }
 $('addStop').onclick=addStop;
 $('stopAddr').addEventListener('keydown',e=>{if(e.key==='Enter')addStop();});
@@ -498,13 +522,17 @@ $('stops').addEventListener('click',e=>{
  if(a==='up'&&i>0)[st[i-1],st[i]]=[st[i],st[i-1]];
  if(a==='dn'&&i<st.length-1)[st[i+1],st[i]]=[st[i],st[i+1]];
  if(a==='rm'){st.splice(i,1);swapSel=null;}
+ if(a==='dup'){const s=st[i],c={...s,id:uid(),time:null,dur:s.dur||null,waitAt:null};
+  /* next visit here: suggest it starts when this one ends */
+  if(s.time)c.time=fmtT(toMin(s.time)+(+s.dur||+S.set.defDur)).slice(0,5);
+  st.splice(i+1,0,c);save();recalc().then(()=>status('Added another visit at '+(s.label||'this address')+(c.time?', starting '+c.time+' when the first ends. Change the time if needed.':'. Set its time.')));return;}
  if(a==='sw'){if(!swapSel){swapSel=st[i].id;renderStops();status('Now tap ⇄ on the visit to swap with.');return;}
   const j=st.findIndex(s=>s.id===swapSel);swapSel=null;if(j>=0&&j!==i)[st[i],st[j]]=[st[j],st[i]];status('');}
  save();recalc();
 });
 $('stops').addEventListener('change',e=>{const t=e.target,f=t.dataset.f;if(!f)return;const s=S.stops[+t.dataset.i];if(!s)return;
  const v=t.value;if(f==='end'){if(v&&s.time)s.dur=((toMin(v)-toMin(s.time))+1440)%1440||null;}else s[f]=v||null;save();
- if(f==='waitAt'){recalc();return;}
+ if(f==='waitAt'||f==='type'||f==='who'){if(f==='type'&&v!=='SC')s.who=null;if(f==='type'&&v==='SC')autoAssign([s]);save();recalc();return;}
  /* update only this visit's row so the box you're typing in keeps focus */
  const row=t.closest('li'),endI=row&&row.querySelector('input[data-f=end]'),mins=row&&row.querySelector('.vmin');
  const d=s.dur||+S.set.defDur;
@@ -521,7 +549,7 @@ $('optBtn').onclick=async()=>{
  try{
   const bad=S.stops.filter(s=>s.lat==null);let msg;
   if(p.some(s=>s.time)){
-   const timed=p.filter(s=>s.time).sort((a,b)=>a.time.localeCompare(b.time)),un=p.filter(s=>!s.time);
+   const timed=p.filter(s=>s.time).sort(byTime),un=p.filter(s=>!s.time);
    S.stops=timed.concat(un,bad);msg='Visits put in appointment-time order'+(un.length?` (${un.length} without a time moved to the end)`:'')+'.';
   }else if(p.length>=2){
    const ns=[s0,...p];if(endFixed())ns.push(e0);
@@ -623,19 +651,34 @@ function renderClock(){
   <div class="stat"><b>${hm_(t.work/60000)}</b><span>working${c.mode==='work'?' · now':''}</span></div>
   <div class="stat"><b style="font-size:20px;white-space:normal">${nv?esc(nv.label):'No more planned visits'}</b><span>${c.mode==='work'&&c.cur!=null?'at visit '+(c.cur+1):'next visit'}</span></div>`;
  $('clkToggle').textContent=c.mode==='drive'?(nv?'Arrived at '+nv.label:'Arrived (stop driving)'):'Leaving: start driving';
+ const N=nodes()||[],t2=N[c.navIdx||1];$('clkNav').textContent=t2?'➤ Next stop: '+t2.n:'➤ No more stops';$('clkNav').disabled=!t2;
+ $('autoNav').checked=S.set.autoNav!==false;
 }
+/* open turn-by-turn directions to stop i of the route (must run inside a tap so the phone allows it) */
+function goTo(i){const N=nodes()||[],x=N[i];if(!x)return false;
+ try{window.open(navLink(x.p),'_blank');}catch(e){}
+ if(S.clock){S.clock.navIdx=i+1;save();}status('Directions opened: '+x.n+'.');renderClock();return true;}
+const autoNavOn=()=>S.set.autoNav!==false;
+$('autoNav').onchange=()=>{S.set.autoNav=$('autoNav').checked;save();};
+$('clkNav').onclick=()=>{if(S.clock)goTo(S.clock.navIdx||1);};
 $('clkStart').onclick=()=>{
  const now=Date.now(),o=$('odoS').value;
  S.clock={vehicle:{...S.vehicle},checks:snapChecks(S.checks),photos:allCheckPhotos(),start:now,segStart:now,mode:$('clkMode').value,drive:0,work:0,odoStart:o===''?null:+o,cur:null,idx:0,
-  visits:S.stops.map((s,i)=>({id:s.id,label:s.label||'Visit '+(i+1),arr:null,lv:null}))};
- save();renderClock();status('Shift started.');
+  visits:S.stops.filter(s=>!isColl(s)).map((s,i)=>({id:s.id,label:s.label||'Visit '+(i+1),arr:null,lv:null}))};
+ S.clock.navIdx=1;save();renderClock();status('Shift started.');
+ if(S.clock.mode==='drive'&&autoNavOn())goTo(1);
 };
 $('clkToggle').onclick=()=>{
  const c=S.clock;if(!c)return;const now=Date.now();
  c[c.mode]+=now-c.segStart;c.segStart=now;
+ let leftId=null;
  if(c.mode==='drive'){c.mode='work';const v=nextVisit(c);if(v){v.arr=now;c.cur=c.idx;}}
- else{c.mode='drive';if(c.cur!=null){c.visits[c.cur].lv=now;c.idx=c.cur+1;c.cur=null;}}
- save();renderClock();
+ else{c.mode='drive';if(c.cur!=null){c.visits[c.cur].lv=now;leftId=c.visits[c.cur].id;c.idx=c.cur+1;c.cur=null;}}
+ /* keep the "next stop" pointer just after the visit you're at or have left */
+ const N=nodes()||[],cv=c.cur!=null?c.visits[c.cur].id:leftId,vi=cv?N.findIndex(x=>x.k==='visit'&&x.s.id===cv):-1;
+ if(vi>=0)c.navIdx=vi+1;
+ save();renderClock();renderSchedule();
+ if(c.mode==='drive'&&autoNavOn())goTo(c.navIdx||1);
 };
 $('clkEnd').onclick=()=>{
  const b=$('clkEnd');if(!b.dataset.c){b.dataset.c=1;b.textContent='Tap again to end';setTimeout(()=>{delete b.dataset.c;b.textContent='End shift';},3000);return;}
@@ -694,7 +737,9 @@ function parseVisits(lines){
   const isTime=s=>!s.replace(TIME,'').replace(/[-–to\s]/g,'');
   let label=(segs.find((s,k)=>k!==ai&&s&&!isTime(s)&&/[A-Za-z]/.test(s))||'').replace(TIME,'').replace(/^[-–\s]+|[-–\s]+$/g,'');
   if(!label&&i>0&&!PCg.test(lines[i-1])&&lines[i-1].length<40)label=lines[i-1].replace(TIME,'').replace(/ \| /g,' ').trim();
-  out.push({label,addr:addr.replace(/\s*,\s*,/g,',').trim(),time:times.slice(0,2).join('–'),on:true});
+  const tp=/\b(DU|D\/U|double[ -]?up)\b/i.test(ln)?'DU':/\b(SC|S\/C|single(?: call)?)\b/i.test(ln)?'SC':null;
+  label=label.replace(/\b(DU|D\/U|SC|S\/C|double[ -]?up|single(?: call)?)\b/ig,' ').replace(/\s+/g,' ').replace(/^[-–,\s]+|[-–,\s]+$/g,'').trim();
+  out.push({label,addr:addr.replace(/\s*,\s*,/g,',').trim(),time:times.slice(0,2).join('–'),type:tp,on:true});
  });
  return out;
 }
@@ -705,7 +750,7 @@ function renderFound(){
   <input type="checkbox" data-i="${i}" data-f="on" ${f.on?'checked':''} aria-label="Include" style="width:22px;min-height:22px">
   <div><input data-i="${i}" data-f="label" value="${esc(f.label)}" placeholder="Label" aria-label="Label">
   <input data-i="${i}" data-f="addr" value="${esc(f.addr)}" placeholder="Address" aria-label="Address" style="margin-top:4px">
-  ${f.time?`<div class="note"><b>${i+1}.</b> ${esc(f.time)}${(()=>{const t=f.time.split('–');const d=f.dur||(t[1]?((toMin(t[1])-toMin(t[0]))+1440)%1440:0);return d?' · '+d+' min':'';})()}</div>`:''}
+  ${f.time||f.type?`<div class="note"><b>${i+1}.</b> ${f.type?'<b>'+f.type+'</b> · ':''}${esc(f.time||'')}${(()=>{const t=f.time.split('–');const d=f.dur||(t[1]?((toMin(t[1])-toMin(t[0]))+1440)%1440:0);return d?' · '+d+' min':'';})()}</div>`:''}
   ${f.addr?'':'<div class="warn">No address found for this name in the image. Type it in, or leave it unticked.</div>'}</div></div>`).join('');
 }
 $('pdfRows').addEventListener('input',e=>{const t=e.target,i=t.dataset.i;if(i==null)return;found[i][t.dataset.f]=t.type==='checkbox'?t.checked:t.value;if(t.dataset.f==='addr'&&t.value.trim()&&!found[i].on){found[i].on=true;const c=$('pdfRows').querySelector(`input[type=checkbox][data-i="${i}"]`);if(c)c.checked=true;}});
@@ -717,9 +762,9 @@ $('pdfAdd').onclick=async()=>{
  let k=0;const added=[];
  for(const v of pick){k++;status(`Finding address ${k} of ${pick.length}…`);
   const known=S.places.find(p=>p.addr===v.addr&&p.lat!=null);const g=known||await geocode(v.addr);
-  const tm=(v.time||'').split('–').map(normT),s={id:uid(),label:v.label,addr:v.addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null,time:tm[0]||null,dur:v.dur||(tm[0]&&tm[1]?((toMin(tm[1])-toMin(tm[0])+1440)%1440)||null:null)};S.stops.push(s);added.push(s);rememberPlace(s);save();renderStops();}
- found=[];stepUI();const gn=$('pdfGroup').value.trim();if(gn){saveGroup(gn,added);$('pdfGroup').value='';}if(S.stops.every(s=>s.time))S.stops.sort((a,b)=>a.time.localeCompare(b.time));const bad=S.stops.filter(s=>s.lat==null).length;
- await recalc();status((bad?`Added. ${bad} address${bad>1?'es':''} couldn't be found on the map. Fix or remove them.`:'Visits added and numbered in time order.')+(gn?` Saved as group "${gn}".`:''));
+  const tm=(v.time||'').split('–').map(normT),s={id:uid(),label:v.label,addr:v.addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null,type:v.type||null,time:tm[0]||null,dur:v.dur||(tm[0]&&tm[1]?((toMin(tm[1])-toMin(tm[0])+1440)%1440)||null:null)};await verifyPlace(s);S.stops.push(s);added.push(s);rememberPlace(s);save();renderStops();}
+ found=[];stepUI();const gn=$('pdfGroup').value.trim();if(gn){saveGroup(gn,added);$('pdfGroup').value='';}autoAssign(added);if(S.stops.every(s=>s.time))S.stops.sort(byTime);const bad=S.stops.filter(s=>s.lat==null).length,wn=added.filter(s=>s.warn).length;
+ await recalc();status((wn?`${wn} address${wn>1?'es need':' needs'} checking (see the warnings in the visit list). `:'')+(bad?`Added. ${bad} address${bad>1?'es':''} couldn't be found on the map. Fix or remove them.`:'Visits added and numbered in time order.')+(gn?` Saved as group "${gn}".`:''));
 };
 
 /* ---------- two-part rota: 1) names with time ranges, 2) address list ---------- */
@@ -787,19 +832,19 @@ let rotaInfo=null;
 /* ---------- colleagues and waiting places ---------- */
 function renderPlaces(){
  $('cols').innerHTML=S.colleagues.map((c,i)=>`<li><div class="pd"><label><input type="checkbox" data-k="colleagues" data-i="${i}" data-a="pick" ${c.pick?'checked':''}> Pick up</label><label><input type="checkbox" data-k="colleagues" data-i="${i}" data-a="drop" ${c.drop?'checked':''}> Drop off</label></div>
-  <div><div class="lbl">${esc(c.label)}</div><div class="addr">${esc(c.addr)}</div>${c.lat==null?'<div class="warn">Address not found. Remove it and try a postcode.</div>':''}</div>
+  <div><a class="nav" href="${esc(navLink(c))}" target="_blank" rel="noopener" title="Navigate to ${esc(c.label)}"><span class="lbl">${esc(c.label)}</span><span class="addr">${esc(c.addr)} <b>➤ Navigate</b></span></a>${c.lat==null?'<div class="warn">Address not found. Remove it and try a postcode.</div>':''}${warnLine(c)}</div>
   <div class="acts"><button data-k="colleagues" data-i="${i}" data-a="up" aria-label="Move up" ${i?'':'disabled'}>↑</button><button data-k="colleagues" data-i="${i}" data-a="dn" aria-label="Move down" ${i<S.colleagues.length-1?'':'disabled'}>↓</button><button data-k="colleagues" data-i="${i}" data-a="rm" aria-label="Remove">✕</button></div></li>`).join('')
   ||'<li style="display:block;color:var(--mute)">No colleagues saved.</li>';
  $('waits').innerHTML=S.waits.map((w,i)=>`<li><span class="mk w" style="width:24px;height:24px;font-size:12px">W</span>
-  <div><div class="lbl">${esc(w.label)}</div><div class="addr">${esc(w.addr)}</div>${w.lat==null?'<div class="warn">Address not found.</div>':''}</div>
+  <div><a class="nav" href="${esc(navLink(w))}" target="_blank" rel="noopener" title="Navigate to ${esc(w.label)}"><span class="lbl">${esc(w.label)}</span><span class="addr">${esc(w.addr)} <b>➤ Navigate</b></span></a>${warnLine(w)}${w.lat==null?'<div class="warn">Address not found.</div>':''}</div>
   <div class="acts"><button data-k="waits" data-i="${i}" data-a="rm" aria-label="Remove">✕</button></div></li>`).join('')
   ||'<li style="display:block;color:var(--mute)">None saved. Choose one per visit under "Wait before".</li>';
 }
 async function addPlace(kind,lab,adr,btn){
  const label=$(lab).value.trim(),addr=$(adr).value.trim();if(!addr||!label){status('Enter a name and an address.');return;}
  status('Finding address…');$(btn).disabled=true;const g=await geocode(addr);$(btn).disabled=false;
- const rec={id:uid(),label,addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null};if(kind==='colleagues'){rec.pick=true;rec.drop=true;}
- S[kind].push(rec);save();$(lab).value='';$(adr).value='';status(g?'':'Address not found.');await recalc();
+ const rec={id:uid(),label,addr,lat:g?g.lat:null,lng:g?g.lng:null,how:g?g.how:null};if(kind==='colleagues'){rec.pick=true;rec.drop=true;}await verifyPlace(rec);
+ S[kind].push(rec);save();$(lab).value='';$(adr).value='';const ck=$('chk-'+adr);if(ck)ck.innerHTML='';await recalc();status(!g?'Address not found.':rec.warn?'Added, but check it: '+rec.warn:'');
 }
 $('colAdd').onclick=()=>addPlace('colleagues','colLabel','colAddr','colAdd');
 $('wAdd').onclick=()=>addPlace('waits','wLabel','wAddr','wAdd');
@@ -820,35 +865,48 @@ const fmtT=m=>{if(m==null)return '—';m=Math.round(m);const d=Math.floor(m/1440
  return String(Math.floor(r/60)).padStart(2,'0')+':'+String(r%60).padStart(2,'0')+(d>0?' (+1 day)':d<0?' (day before)':'');};
 function schedule(){
  const N=nodes();if(!route||!N||route.legs.length!==N.length-1)return null;
- const tf=1+(+S.set.traffic||0)/100,buf=+S.set.buffer||0,pk=+S.set.pickMin||0,L=i=>route.legs[i].duration/60*tf;
- const fv=N.findIndex(x=>x.k==='visit');if(fv<0)return null;
- const T1=toMin(N[fv].s.time);
- if(T1==null)return {ev:[],note:'Add an appointment time to your first visit to work out when to leave.'};
- const ev=[];let pre=0;for(let i=0;i<fv;i++){pre+=L(i);if(N[i+1].k==='pick')pre+=pk;}
- let t=T1-buf-pre;
- ev.push({t,k:'leave',n:'Leave '+N[0].n.toLowerCase()+(fv>1?' to pick up '+N.slice(1,fv).map(x=>x.p.label).join(', '):' for '+N[fv].n),alert:true});
- for(let i=0;i<fv;i++){t+=L(i);if(N[i+1].k==='pick'){ev.push({t,k:'pick',n:N[i+1].n});t+=pk;}}
- let cur=fv,arr=t;
- for(;;){
-  const nd=N[cur],T=toMin(nd.s.time),start=T!=null?Math.max(arr,T):arr,dur=+nd.s.dur||+S.set.defDur||30;
-  const late=T!=null&&arr>T+0.5?arr-T:0;
-  ev.push({t:arr,k:'arrive',n:'Arrive at '+nd.n+(T!=null?' (appointment '+fmtT(T)+')':''),late});
-  const end=start+dur;ev.push({t:end,k:'finish',n:'Finish '+nd.n+' after '+dur+' min'});
-  const nx=N.findIndex((x,k)=>k>cur&&x.k==='visit');
-  if(nx<0){let tt=end;for(let i=cur;i<N.length-1;i++){tt+=L(i);const nd2=N[i+1];if(nd2.k==='drop'){ev.push({t:tt,k:'drop',n:nd2.n});tt+=pk;}else ev.push({t:tt,k:'end',n:'Arrive '+nd2.n.toLowerCase()});}break;}
-  const nv=N[nx],Tn=toMin(nv.s.time),hasWait=nx===cur+2&&N[cur+1].k==='wait';
-  if(hasWait){
-   const arrW=end+L(cur);let lv=Tn!=null?Tn-buf-L(cur+1):arrW;if(lv<arrW)lv=arrW;
-   ev.push({t:arrW,k:'wait',n:'Wait at '+N[cur+1].n+(lv-arrW>=1?' for '+Math.round(lv-arrW)+' min':'')});
-   ev.push({t:lv,k:'leave',n:'Leave '+N[cur+1].n+' for '+nv.n,alert:Tn!=null});arr=lv+L(cur+1);
-  }else{
-   let lv=Tn!=null?Tn-buf-L(cur):end;if(lv<end)lv=end;
-   if(lv-end>=1)ev.push({t:end,k:'wait',n:'Wait in the car for '+Math.round(lv-end)+' min'});
-   ev.push({t:lv,k:'leave',n:'Leave for '+nv.n,alert:Tn!=null});arr=lv+L(cur);
-  }
-  cur=nx;
+ const tf=1+(+S.set.traffic||0)/100,buf=+S.set.buffer||0,pk=+S.set.pickMin||0,L=i=>{const t=legMinutes(i,N);return t!=null?t:route.legs[i].duration/60*tf;};
+ const {y,m,dd}=shiftDay(),base=new Date(y,m-1,dd).getTime(),am=ms=>(ms-base)/60000;
+ const actual=id=>S.clock&&S.clock.visits?S.clock.visits.find(v=>v.id===id):null;
+ const durOf=s=>+s.dur||+S.set.defDur||30;
+ /* latest time you may arrive at node j (null when it has no appointment) */
+ const dl=j=>{const x=N[j];if(!x||!x.s)return null;const T=toMin(x.s.time);if(T==null)return null;
+  if(x.k==='visit')return T-buf;
+  if(x.k==='cdrop'){let d=T-buf;const nx=N[j+1];if(nx&&nx.k==='visit'){const Tm=toMin(nx.s.time);if(Tm!=null)d=Math.min(d,Tm-buf-pk-L(j));}return d;}
+  return null;};
+ const fd=N.findIndex((x,j)=>dl(j)!=null);
+ if(fd<0)return {ev:[],dep:[],note:'Add an appointment time to your first visit to work out when to leave.'};
+ let pre=0;for(let i=0;i<fd;i++){pre+=L(i);if(i+1<fd&&['pick','drop'].includes(N[i+1].k))pre+=pk;}
+ const ev=[],dep=[],cEnd={};
+ dep[0]=dl(fd)-pre;
+ const nm=x=>x.k==='visit'?x.n:x.n.charAt(0).toLowerCase()+x.n.slice(1);
+ ev.push({t:dep[0],k:'leave',n:'Leave '+N[0].n.toLowerCase()+(N[1]?' to '+(N[1].k==='pick'?'pick up '+N[1].p.label:N[1].k==='visit'?'go to '+N[1].n:nm(N[1])):''),alert:true});
+ for(let i=1;i<N.length;i++){
+  const x=N[i];let arr=dep[i-1]+L(i-1),act=false,ready=arr;
+  if(x.k==='visit'){const a=actual(x.s.id);if(a&&a.arr){arr=am(a.arr);act=true;}}
+  if(x.k==='pick'||x.k==='drop'){ev.push({t:arr,k:x.k,n:x.n});ready=arr+pk;}
+  else if(x.k==='wait'){ev.push({t:arr,k:'wait',n:'Wait at '+x.n});ready=arr;}
+  else if(x.k==='cdrop'){const T=toMin(x.s.time),st=T!=null?Math.max(arr+pk,T):arr+pk;cEnd[x.s.id]=st+durOf(x.s);
+   const late=T!=null&&arr+pk>T+0.5?arr+pk-T:0;
+   ev.push({t:arr,k:'cdrop',n:x.n+(T!=null?` (${x.cn}'s ${x.s.type||''} call ${fmtT(T)}–${fmtT(T+durOf(x.s))})`.replace(' ',' '):''),late,appt:T,ni:i});ready=arr+pk;}
+  else if(x.k==='visit'){const T=toMin(x.s.time),a=actual(x.s.id),start=act?arr:(T!=null?Math.max(arr,T):arr);
+   let end=start+durOf(x.s),actEnd=false;if(a&&a.lv){end=am(a.lv);actEnd=true;}
+   const late=T!=null&&arr>T+0.5?arr-T:0;
+   ev.push({t:arr,k:'arrive',n:'Arrive at '+x.n+(x.s.type?' ('+x.s.type+')':'')+(T!=null?' · appointment '+fmtT(T):''),late,appt:T,ni:i,act});
+   ev.push({t:end,k:'finish',n:'Finish '+x.n+(actEnd?'':' after '+durOf(x.s)+' min'),act:actEnd});ready=end;}
+  else if(x.k==='collect'){const ce=cEnd[x.s.id],r=ce!=null?Math.max(arr,ce):arr;
+   if(ce!=null&&ce-arr>=1)ev.push({t:arr,k:'wait',n:`Wait for ${x.cn} to finish (${Math.round(ce-arr)} min)`});
+   ev.push({t:r,k:'collect',n:x.n});ready=r+pk;}
+  else if(x.k==='end'){ev.push({t:arr,k:'end',n:'Arrive '+x.n.toLowerCase()});ready=arr;}
+  if(i===N.length-1){dep[i]=ready;break;}
+  /* when to leave this point */
+  const d=dl(i+1),nx=N[i+1];let lv=ready;
+  if(d!=null){const want=d-L(i);
+   if(want>ready){const gap=Math.round(want-ready);if(gap>=1){if(x.k==='wait')ev[ev.length-1].n+=' for '+gap+' min';else ev.push({t:ready,k:'wait',n:'Wait in the car for '+gap+' min'});}lv=want;}
+   ev.push({t:lv,k:'leave',n:(x.k==='wait'?'Leave '+x.n+' to ':'Leave to ')+(nx.k==='visit'?'go to '+nx.n:nm(nx)),alert:true});}
+  dep[i]=lv;
  }
- return {ev};
+ return {ev,dep};
 }
 function shiftDay(){const d=$('shDate').value||new Date().toISOString().slice(0,10);const [y,m,dd]=d.split('-').map(Number);return {d,y,m,dd};}
 function alertEvents(){const sc=schedule();if(!sc)return [];const {d,y,m,dd}=shiftDay();
@@ -857,9 +915,10 @@ function renderSchedule(){
  const sc=schedule();
  if(!sc){$('tl').innerHTML='';$('tlNote').textContent='Plan a route (start point and visits) to see your timeline.';renderAlertNote();return;}
  const {y,m,dd}=shiftDay(),now=Date.now();
- $('tlNote').textContent=sc.note||`Times include ${S.set.traffic}% for traffic, ${S.set.buffer} min early arrival${picks().length||drops().length?' and '+S.set.pickMin+' min at each pick-up or drop-off':''}.`;
+ const NN=nodes()||[],tl=NN.slice(0,-1).filter((x,i)=>legMinutes(i,NN)!=null).length;
+ $('tlNote').textContent=sc.note||(tl?`Drive times use TomTom's predicted traffic for ${tl} of ${NN.length-1} legs`+(tl<NN.length-1?`, +${S.set.traffic}% for the rest`:'')+',':`Times include ${S.set.traffic}% for traffic,`)+` ${S.set.buffer} min early arrival${picks().length||drops().length?' and '+S.set.pickMin+' min at each pick-up or drop-off':''}.`;
  $('tl').innerHTML=sc.ev.length?'<tbody>'+sc.ev.map(e=>{const at=new Date(y,m-1,dd,0,Math.round(e.t)).getTime();
-  return `<tr class="${e.k}${e.late?' late':''}${at<now-60000?' past':''}"><td class="t">${fmtT(e.t)}</td><td>${e.alert&&S.alertsOn?'🔔 ':''}${esc(e.n)}${e.late?` <b>· ${Math.round(e.late)} min late</b>`:''}</td></tr>`;}).join('')+'</tbody>':'';
+  return `<tr class="${e.k}${e.late?' late':''}${at<now-60000?' past':''}"><td class="t">${fmtT(e.t)}</td><td>${e.alert&&S.alertsOn?'🔔 ':''}${esc(e.n)}${e.act?' <span class="note">· actual</span>':''}${e.late?` <b>· ${Math.round(e.late)} min late</b>`:''}</td></tr>`;}).join('')+'</tbody>':'';
  renderAlertNote();
 }
 
@@ -1001,8 +1060,18 @@ $('rotaIn').onchange=async e=>{
  }catch(x){status('Couldn\'t read that file. Check your internet connection (the reader loads online) and try again.');}
 };
 document.querySelectorAll('.btnl').forEach(l=>l.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();l.querySelector('input').click();}}));
+/* two single calls at the same time: the first goes to a colleague (dropped off there), the other is mine */
+function autoAssign(list){
+ const col=picks()[0]||S.colleagues[0];if(!col)return 0;let n=0;
+ const sc=S.stops.filter(s=>s.type==='SC'&&s.time);
+ const groups={};sc.forEach(s=>{(groups[s.time]=groups[s.time]||[]).push(s);});
+ Object.values(groups).forEach(g=>{if(g.length<2||!g.some(s=>list.includes(s)))return;
+  if(g.some(s=>isColl(s)))return;
+  g[0].who=col.id;g.slice(1).forEach(s=>{s.who='me';});n++;});
+ return n;
+}
 /* ---------- saved groups of visits ---------- */
-const gStop=s=>({label:s.label,addr:s.addr,lat:s.lat,lng:s.lng,how:s.how,time:s.time||null,dur:s.dur||null,waitAt:s.waitAt||null});
+const gStop=s=>({label:s.label,addr:s.addr,lat:s.lat,lng:s.lng,how:s.how,time:s.time||null,dur:s.dur||null,waitAt:s.waitAt||null,type:s.type||null,who:s.who||null});
 function saveGroup(name,stops){
  const g={id:uid(),name,stops:stops.map(gStop)},i=S.groups.findIndex(x=>x.name.toLowerCase()===name.toLowerCase());
  if(i>=0){g.id=S.groups[i].id;S.groups[i]=g;}else S.groups.push(g);
@@ -1023,8 +1092,8 @@ $('grpLoad').onclick=async()=>{
  const g=S.groups.find(x=>x.id===$('grpSel').value);if(!g)return;
  S.stops=g.stops.map(s=>({...s,id:uid(),waitAt:s.waitAt&&S.waits.some(w=>w.id===s.waitAt)?s.waitAt:null}));
  const miss=S.stops.filter(s=>s.lat==null);
- for(const s of miss){status('Finding address…');const r=await geocode(s.addr);if(r){Object.assign(s,{lat:r.lat,lng:r.lng,how:r.how});}}
- if(S.stops.every(s=>s.time))S.stops.sort((a,b)=>a.time.localeCompare(b.time));
+ for(const s of miss){status('Finding address…');const r=await geocode(s.addr);if(r){Object.assign(s,{lat:r.lat,lng:r.lng,how:r.how});await verifyPlace(s);}}
+ if(S.stops.every(s=>s.time))S.stops.sort(byTime);
  save();await recalc();status(`Loaded "${g.name}": ${S.stops.length} visit${S.stops.length>1?'s':''}. Change any times for today if needed.`);
 };
 $('grpDel').onclick=()=>{
@@ -1033,11 +1102,123 @@ $('grpDel').onclick=()=>{
  delete b.dataset.c;b.textContent='Delete';S.groups=S.groups.filter(x=>x!==g);save();renderGroups();status(`Deleted group "${g.name}".`);
 };
 
+/* ---------- address checking (as you type, and after the map lookup) ---------- */
+const pcCache={};
+const pcIn=s=>{const m=String(s||'').match(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i);return m?(m[1]+' '+m[2]).toUpperCase():null;};
+async function pcLookup(pc){
+ if(pc in pcCache)return pcCache[pc];
+ try{const r=await fetch('https://api.postcodes.io/postcodes/'+encodeURIComponent(pc.replace(/\s/g,'')));
+  if(r.status===404){pcCache[pc]=false;return false;}
+  const j=await r.json();pcCache[pc]=j.result?{lat:j.result.latitude,lng:j.result.longitude,area:[j.result.admin_ward,j.result.admin_district].filter(Boolean).join(', ')}:false;
+ }catch(e){return null;}
+ return pcCache[pc];
+}
+async function pcSuggest(pc){try{const r=await fetch('https://api.postcodes.io/postcodes/'+encodeURIComponent(pc.split(' ')[0])+'/autocomplete?limit=5');const j=await r.json();return j.result||[];}catch(e){return [];}}
+const kmBetween=(a,b)=>{const R=6371,t=x=>x*Math.PI/180,dl=t(b.lat-a.lat),dg=t(b.lng-a.lng),h=Math.sin(dl/2)**2+Math.cos(t(a.lat))*Math.cos(t(b.lat))*Math.sin(dg/2)**2;return 2*R*Math.asin(Math.sqrt(h));};
+/* live check under an address box */
+function watchAddr(inputId){
+ const inp=$(inputId);if(!inp)return;const out=document.createElement('div');out.className='note';out.id='chk-'+inputId;out.setAttribute('aria-live','polite');
+ inp.closest('.row').insertAdjacentElement('afterend',out);let t=null,seq=0;
+ inp.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(async()=>{
+  const v=inp.value.trim(),my=++seq;if(v.length<5){out.innerHTML='';return;}
+  const pc=pcIn(v);
+  if(!pc){out.innerHTML=/\b[A-Z]{1,2}\d/i.test(v)?'<span class="warn">The postcode looks incomplete. It should look like BS7 8AA.</span>':'<span style="color:var(--yel2)">⚠ No postcode yet. Add it so the address can\'t be matched to the wrong place.</span>';return;}
+  out.textContent='Checking postcode '+pc+'…';
+  const r=await pcLookup(pc);if(my!==seq)return;
+  if(r===null){out.textContent='Couldn\'t check the postcode (no connection).';return;}
+  if(!r){const sg=await pcSuggest(pc);if(my!==seq)return;
+   out.innerHTML=`<span class="warn">✗ Postcode ${esc(pc)} doesn't exist. Check it.</span>${sg.length?' Postcodes in '+esc(pc.split(' ')[0])+' include: '+sg.map(s=>`<button type="button" class="sug" data-pc="${esc(s)}">${esc(s)}</button>`).join(' '):''}`;return;}
+  out.innerHTML=`<span style="color:var(--ok)">✓ ${esc(pc)} is a real postcode</span> · ${esc(r.area)}`;
+ },700);});
+ out.addEventListener('click',e=>{const b=e.target.closest('.sug');if(!b)return;inp.value=inp.value.replace(/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i,b.dataset.pc);inp.dispatchEvent(new Event('input'));inp.focus();});
+}
+['homeAddr','officeAddr','colAddr','wAddr','stopAddr'].forEach(watchAddr);
+/* after the map lookup: is the pin where the postcode says it should be? */
+async function verifyPlace(rec){
+ if(!rec||rec.lat==null){return rec;}
+ delete rec.warn;const pc=pcIn(rec.addr);
+ if(!pc){rec.warn='No postcode in this address, so the pin might be in the wrong place. Check it on the map.';return rec;}
+ const r=await pcLookup(pc);
+ if(r===false){rec.warn=`Postcode ${pc} doesn't exist. The pin may be wrong.`;return rec;}
+ if(r){const d=kmBetween(rec,r);if(d>1.5)rec.warn=`The pin is ${d.toFixed(1)} km from postcode ${pc}. The street or postcode may be wrong. Fix the address, or drag the pin.`;}
+ if(!rec.warn&&S.home&&rec!==S.home){const d=kmBetween(rec,S.home);if(d>60)rec.warn=`This is ${Math.round(d)} km from home. Is it the right town?`;}
+ return rec;
+}
+const warnLine=p=>p&&p.warn?`<div class="warn">⚠ ${esc(p.warn)}</div>`:'';
+
+/* ---------- live traffic (optional free TomTom key) ---------- */
+const nid=p=>p===S.home?'home':p===S.office?'office':p.id;
+async function ttRoute(a,b,departAt,alts){
+ const key=(S.set.ttKey||'').trim();if(!key)throw new Error('nokey');
+ const u=`https://api.tomtom.com/routing/1/calculateRoute/${a.lat},${a.lng}:${b.lat},${b.lng}/json?key=${encodeURIComponent(key)}&traffic=true&travelMode=car&routeType=fastest&maxAlternatives=${alts||0}`+(departAt?'&departAt='+encodeURIComponent(departAt):'');
+ const r=await fetch(u);if(r.status===403||r.status===401)throw new Error('badkey');if(!r.ok)throw new Error('tt '+r.status);
+ const j=await r.json();return (j.routes||[]).map(x=>({min:x.summary.travelTimeInSeconds/60,delay:(x.summary.trafficDelayInSeconds||0)/60,km:x.summary.lengthInMeters/1000}));
+}
+/* traffic-predicted minutes per leg for the planned shift date, used by the timeline */
+const tKey=(a,b)=>shiftDay().d+'|'+nid(a)+'|'+nid(b);
+function legMinutes(i,N){const v=(S.tLegs||{})[tKey(N[i].p,N[i+1].p)];return v!=null?v:null;}
+$('ttRoute').onclick=async()=>{
+ if(!(S.set.ttKey||'').trim()){status('Add your free TomTom key in Settings first.');return;}
+ const N=nodes(),sc=schedule();if(!N||!route||!sc||!sc.ev.length){status('Plan the route with appointment times first.');return;}
+ const {y,m,dd}=shiftDay();let i=0,ok=0;S.tLegs=S.tLegs||{};
+ /* departure time for each leg from the current timeline */
+ const leaves=[];let t=sc.ev[0].t;
+ for(i=0;i<N.length-1;i++){const k=tKey(N[i].p,N[i+1].p);delete S.tLegs[k];}
+ try{
+  for(i=0;i<N.length-1;i++){
+   status(`Checking traffic for leg ${i+1} of ${N.length-1}…`);
+   const sc2=schedule(),dep=new Date(y,m-1,dd,0,Math.round(legStart(sc2,N,i)));
+   const when=dep.getTime()>Date.now()+60000?dep.toISOString().replace(/\.\d+Z$/,''):null;
+   const rs=await ttRoute(N[i].p,N[i+1].p,when,0);if(rs[0]){S.tLegs[tKey(N[i].p,N[i+1].p)]=rs[0].min;ok++;}
+  }
+  save();renderSchedule();status(`Timeline updated with predicted traffic for ${ok} leg${ok>1?'s':''}.`);
+ }catch(e){status(e.message==='badkey'?'TomTom rejected the key. Check it in Settings.':'Couldn\'t reach TomTom. Check your connection.');}
+};
+/* time (minutes after midnight) the car leaves node i, read from the timeline */
+function legStart(sc,N,i){return sc&&sc.dep&&sc.dep[i]!=null?sc.dep[i]:0;}
+/* live delay watch: every 5 min while alerts are on, check the next leave time against live traffic */
+let lastTT=0;
+async function watchTraffic(force){
+ if(!(S.set.ttKey||'').trim()||(!S.alertsOn&&!force))return;
+ if(!force&&Date.now()-lastTT<5*60000)return;lastTT=Date.now();
+ const N=nodes(),sc=schedule();if(!N||!sc)return;
+ const {y,m,dd,d}=shiftDay(),now=Date.now(),buf=+S.set.buffer||0;
+ /* the next timed visit we have not reached yet */
+ const arr=sc.ev.filter(e=>(e.k==='arrive'||e.k==='cdrop')&&e.appt!=null&&e.ni!=null);
+ const next=arr.find(e=>new Date(y,m-1,dd,0,Math.round(e.appt)).getTime()>now);
+ if(!next){if(force)$('ttOut').textContent='No more timed visits today.';return;}
+ const vi=next.ni;if(!vi||vi<1)return;
+ let fi=vi-1;
+ let from=N[fi].p;if(S.clock&&S.clock.cur!=null){/* at a visit now: start from it */}
+ try{
+  const rs=await ttRoute(from,N[vi].p,null,2);if(!rs.length)return;
+  const best=rs.reduce((a,b)=>a.min<=b.min?a:b),main=rs[0];
+  const leaveBy=next.appt-buf-best.min,planned=sc.ev.filter(e=>e.k==='leave'&&e.t<=next.t).pop();
+  const lb=new Date(y,m-1,dd,0,Math.round(leaveBy)),late=(now-lb.getTime())/60000;
+  const msg=`Next: ${N[vi].n} at ${fmtT(next.appt)}. Live traffic from ${N[fi].n.replace(/^(Pick up|Drop off) /,'')}: ${Math.round(main.min)} min`+(main.delay>=1?` (${Math.round(main.delay)} min delay)`:' (no delay)')+
+   (rs.length>1?`. ${rs.length-1} other route${rs.length>2?'s':''}: `+rs.slice(1).map(r=>Math.round(r.min)+' min').join(', '):'')+`. Leave by ${fmtT(leaveBy)}.`;
+  $('ttOut').textContent=msg+' Checked '+new Date().toTimeString().slice(0,5)+'.';
+  const k='tt|'+d+'|'+N[vi].p.id+'|'+Math.round(leaveBy);
+  if(planned&&leaveBy<planned.t-2&&!S.fired[k]){S.fired[k]=now;save();
+   notify(late>0?`Running late for ${N[vi].n}`:`Traffic: leave ${Math.round(planned.t-leaveBy)} min earlier`,
+    late>0?`Live traffic means you'd arrive about ${Math.round(late)} min late. Leave now and let the office or client know.`:`Leave by ${fmtT(leaveBy)} instead of ${fmtT(planned.t)}.${best!==main?' A different route is faster; your map app will offer it.':''}`);}
+ }catch(e){if(force)$('ttOut').textContent=e.message==='badkey'?'TomTom rejected the key. Check it in Settings.':'Couldn\'t reach TomTom just now.';}
+}
+setInterval(()=>watchTraffic(false),60000);
+$('ttNow').onclick=()=>{if(!(S.set.ttKey||'').trim()){const N=nodes(),sc=schedule();
+  /* no key: open the next leg in Google Maps, which shows live traffic and alternative routes */
+  const nx=N&&N.find(x=>x.k==='visit');if(nx){window.open('https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+nx.p.lat+','+nx.p.lng,'_blank');}
+  $('ttOut').textContent='No TomTom key, so I opened Google Maps, which shows live traffic and other routes. Add a free key in Settings for automatic delay alerts.';return;}
+ watchTraffic(true);};
+$('ttTest').onclick=async()=>{S.set.ttKey=$('ttKey').value.trim();save();
+ try{await ttRoute({lat:51.4545,lng:-2.5879},{lat:51.4800,lng:-2.5900},null,0);$('ttKeyOut').innerHTML='<span style="color:var(--ok)">✓ Key works. Live traffic is on.</span>';}
+ catch(e){$('ttKeyOut').innerHTML='<span class="warn">'+(e.message==='badkey'?'✗ TomTom rejected this key.':e.message==='nokey'?'Paste your key first.':'✗ Couldn\'t reach TomTom.')+'</span>';}};
+
 /* ---------- settings ---------- */
 const setIds=['rate','paidMode','hmrc','tax','app','perMonth','start','end','buffer','pickMin','traffic','defDur','lead'];
-function syncSettings(){setIds.forEach(k=>{$(k).value=(k==='rate'&&!S.set.rate)?'':S.set[k];});['home','office'].forEach(k=>{if(S[k])$(k+'Addr').value=S[k].addr;});}
+function syncSettings(){$('ttKey').value=S.set.ttKey||'';setIds.forEach(k=>{$(k).value=(k==='rate'&&!S.set.rate)?'':S.set[k];});['home','office'].forEach(k=>{if(S[k])$(k+'Addr').value=S[k].addr;});}
 setIds.forEach(k=>$(k).addEventListener('change',()=>{const v=$(k).value;S.set[k]=['rate','hmrc','tax','perMonth','buffer','pickMin','traffic','defDur','lead'].includes(k)?(+v||0):v;save();renderSchedule();
- if(k==='start'||k==='end'){status('');recalc();}else{renderRoute();renderLog();}}));
+ if(k==='start'||k==='end'){status('');recalc();}else if(k==='app'){renderAll();}else{renderRoute();renderLog();}}));
 $('shDate').value=new Date().toISOString().slice(0,10);$('shDate').addEventListener('change',renderSchedule);
 syncSettings();renderChecks();renderGroups();renderAll();recalc();
 }
